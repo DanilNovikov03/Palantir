@@ -1,7 +1,19 @@
+using Microsoft.EntityFrameworkCore;
+using Palantir.Infrastructure.Data;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Add DB
+var connectionString = 
+    builder.Configuration.GetConnectionString(DatabaseSettings.ConnectionStringName)
+    ?? throw new InvalidOperationException("Connection string not found");
 
+builder.Services.AddDbContext<PalantirDbContext>(options => options.UseNpgsql(
+    connectionString,
+    o => o.UseNetTopologySuite())
+);
+
+// Add services to the container.
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -10,14 +22,13 @@ builder.Services.AddSwaggerGen();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.MapGet("/", () => "Hello World!");
+app.MapGet("/", () => connectionString);
 
 app.UseHttpsRedirection();
 
