@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Palantir.Application.Interfaces;
 using Palantir.Infrastructure.Data;
+using Palantir.Infrastructure.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,16 +21,25 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Add Repository
+builder.Services.AddScoped<IArmyRepository, ArmyRepository>();
+builder.Services.AddScoped<IOperationRepository, OperationRepository>();
+builder.Services.AddScoped<IOperationSideRepository, OperationSideRepository>();
+builder.Services.AddScoped<ISideRepository, SideRepository>();
+builder.Services.AddScoped<ITheaterRepository, TheaterRepository>();
+builder.Services.AddScoped<IWarRepository, WarRepository>();
+builder.Services.AddScoped<IWarSideRepository, WarSideRepository>();
+
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.MapGet("/", () => connectionString);
+app.MapGet("/", () => "Hello, World");
 
 app.UseHttpsRedirection();
 

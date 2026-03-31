@@ -19,7 +19,6 @@
 
   <ItemGroup>
     <Folder Include="Application\Services\" />
-    <Folder Include="Infrastructure\Repositories\" />
     <Folder Include="Migrations\" />
     <Folder Include="DTO\" />
   </ItemGroup>
