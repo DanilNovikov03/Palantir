@@ -1,8 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Palantir.Application.Interfaces;
-using Palantir.Domain.Models;
-
-namespace Palantir.Presenatation.Controllers
+﻿namespace Palantir.Presenatation.Controllers
 {
     [ApiController]
     [Route("[controller]")]

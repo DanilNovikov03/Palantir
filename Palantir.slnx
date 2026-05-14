@@ -1,3 +1,6 @@
 <Solution>
+  <Project Path="Palantir.Application/Palantir.Application.csproj" Id="9fdde768-1afc-4004-9bab-5029bf355a0f" />
+  <Project Path="Palantir.Domain/Palantir.Domain.csproj" Id="73329811-050c-4589-9cba-897cdb9f01c4" />
+  <Project Path="Palantir.Infrastructure/Palantir.Infrastructure.csproj" Id="d3e754ba-9cf7-4caa-acbe-02d6b41d7e67" />
   <Project Path="Palantir/Palantir.csproj" />
 </Solution>

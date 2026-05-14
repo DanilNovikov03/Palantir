@@ -1,8 +1,3 @@
-using Microsoft.EntityFrameworkCore;
-using Palantir.Application.Interfaces;
-using Palantir.Infrastructure.Data;
-using Palantir.Infrastructure.Repositories;
-
 var builder = WebApplication.CreateBuilder(args);
 
 // Add DB

@@ -1,0 +1,9 @@
+﻿global using System.ComponentModel.DataAnnotations;
+global using System.ComponentModel.DataAnnotations.Schema;
+global using Microsoft.EntityFrameworkCore;
+global using NetTopologySuite.Geometries;
+global using Palantir.Domain.Models;
+global using Palantir.Domain.Contracts.Request;
+global using Palantir.Domain.Contracts.Response;
+global using Palantir.Domain.Contracts.Request.Create;
+global using Palantir.Domain.Contracts.Request.Update;

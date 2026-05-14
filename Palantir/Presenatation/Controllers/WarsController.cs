@@ -1,9 +1,3 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Palantir.Application.Interfaces;
-using Palantir.Domain.Models;
-using Palantir.Infrastructure.Data;
-
 namespace Palantir.Presenatation.Controllers
 {
     [ApiController]
