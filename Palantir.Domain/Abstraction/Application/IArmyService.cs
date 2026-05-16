@@ -3,8 +3,8 @@
     public interface IArmyService
     {
         Task<ArmyResponse?> GetByIdAsync(int id);
-        Task AddAsync(ArmyRequest armyRequest);
-        Task UpdateAsync(int id, ArmyRequest armyRequest);
+        Task<ArmyResponse> AddAsync(CreateArmyRequest armyRequest);
+        Task<ArmyResponse> UpdateAsync(int id, UpdateArmyRequest armyRequest);
         Task DeleteAsync(int id);
     }
 }

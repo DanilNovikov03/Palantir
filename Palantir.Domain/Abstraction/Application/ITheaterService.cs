@@ -4,8 +4,8 @@
     {
         Task<List<TheaterResponse>> GetAllAsync();
         Task<TheaterResponse?> GetByIdAsync(int theaterId);
-        Task AddAsync(TheaterRequest request);
-        Task UpdateAsync(int theaterId, TheaterRequest request);
+        Task<TheaterResponse> AddAsync(TheaterRequest request);
+        Task<TheaterResponse> UpdateAsync(int theaterId, TheaterRequest request);
         Task DeleteAsync(int theaterId);
     }
 }

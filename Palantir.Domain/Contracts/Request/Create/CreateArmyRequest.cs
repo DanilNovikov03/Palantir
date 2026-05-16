@@ -1,6 +1,6 @@
-﻿namespace Palantir.Domain.Contracts.Request
+﻿namespace Palantir.Domain.Contracts.Request.Create
 {
-    public record class ArmyRequest(
+    public record class CreateArmyRequest(
         int WarSideId,
         string Name,
         string? TypeArmy,

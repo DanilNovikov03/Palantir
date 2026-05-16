@@ -1,4 +1,5 @@
 ﻿using Npgsql.EntityFrameworkCore.PostgreSQL.Query.ExpressionTranslators.Internal;
+using Palantir.Domain.Models;
 
 namespace Palantir.Application.Services
 {
@@ -6,22 +7,17 @@ namespace Palantir.Application.Services
     {
         IOperationSideRepository _repository;
 
-        public OperationSideService(IOperationSideRepository repository)
-        {
+        public OperationSideService(IOperationSideRepository repository) =>
             _repository = repository;
-        }
 
         public async Task<List<OperationSideResponse>> GetAllAsync()
         {
             var operSides =
                 await _repository.GetAllAsync();
 
-            return operSides.Select(operSide => new OperationSideResponse(
-                operSide.operation_id,
-                operSide.war_side_id,
-                operSide.role_side,
-                operSide.note
-            )).ToList();
+            return operSides.Select(operSide => 
+                Response(operSide)
+            ).ToList();
         }
 
         public async Task<OperationSideResponse?> GetByIdsAsync(int operationId, int warSideId)
@@ -31,12 +27,7 @@ namespace Palantir.Application.Services
             if (operationSides == null)
                 return null;
 
-            return new OperationSideResponse(
-                operationSides.operation_id,
-                operationSides.war_side_id,
-                operationSides.role_side,
-                operationSides.note
-            );
+            return Response(operationSides);
         }
 
         public async Task<List<OperationSideResponse>> GetByOperationIdAsync(int operationId)
@@ -44,12 +35,9 @@ namespace Palantir.Application.Services
             var operations = await _repository
                 .GetByOperationIdAsync(operationId);
 
-            return operations.Select(oper => new OperationSideResponse(
-                oper.operation_id,
-                oper.war_side_id,
-                oper.role_side,
-                oper.note
-            )).ToList();
+            return operations.Select(oper => 
+                Response(oper)
+                ).ToList();
         }
 
         public async Task<List<OperationSideResponse>> GetByWarSideIdAsync(int warSideId)
@@ -57,12 +45,9 @@ namespace Palantir.Application.Services
             var warSides = await _repository
                 .GetByWarSideIdAsync(warSideId);
 
-            return warSides.Select(warSide => new OperationSideResponse(
-                warSide.operation_id,
-                warSide.war_side_id,
-                warSide.role_side,
-                warSide.note
-            )).ToList();
+            return warSides.Select(warSide => 
+                Response(warSide)
+                ).ToList();
         }
 
         public async Task AddAsync(CreateOperationSideRequest operationSideRequest)
@@ -103,6 +88,14 @@ namespace Palantir.Application.Services
 
             await _repository.DeleteAsync(operationId, warSideId);
         }
+
+        private OperationSideResponse Response(OperationSide operationSide) =>
+            new OperationSideResponse(
+                operationSide.operation_id,
+                operationSide.war_side_id,
+                operationSide.role_side,
+                operationSide.note
+            );
 
         private void Exception() =>
             throw new KeyNotFoundException("operation side not found");

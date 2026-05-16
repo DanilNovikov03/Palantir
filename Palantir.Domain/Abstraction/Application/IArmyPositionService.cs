@@ -5,8 +5,8 @@ namespace Palantir.Domain.Abstraction.Application
 {
     public interface IArmyPositionService
     {
-        Task AddAsync(CreateArmyPositionRequest armyPosRequest);
-        Task UpdateAsync(int id, UpdateArmyPositionRequest armyPosRequest);
+        Task<ArmyPositionResponse> AddAsync(CreateArmyPositionRequest armyPosRequest);
+        Task<ArmyPositionResponse> UpdateAsync(int id, UpdateArmyPositionRequest armyPosRequest);
         Task DeleteAsync(int id);
     }
 }

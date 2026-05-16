@@ -1,8 +1,6 @@
-﻿namespace Palantir.Domain.Contracts.Response
+﻿namespace Palantir.Domain.Contracts.Request.Update
 {
-    public record ArmyResponse(
-        int Id, 
-        int WarSideId,
+    public record class UpdateArmyRequest(
         string Name,
         string? TypeArmy,
         DateOnly? StartDate,

@@ -22,6 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Palantir.Application\Palantir.Application.csproj" />
     <ProjectReference Include="..\Palantir.Domain\Palantir.Domain.csproj" />
     <ProjectReference Include="..\Palantir.Infrastructure\Palantir.Infrastructure.csproj" />
   </ItemGroup>

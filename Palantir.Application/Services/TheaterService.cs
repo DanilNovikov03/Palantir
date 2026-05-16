@@ -4,21 +4,16 @@
     {
         ITheaterRepository _repository;
 
-        public TheaterService(ITheaterRepository repository)
-        {
+        public TheaterService(ITheaterRepository repository) =>
             _repository = repository;
-        }
 
         public async Task<List<TheaterResponse>> GetAllAsync()
         {
             var theaters = await _repository.GetAllAsync();
 
-            return theaters.Select(theater => new TheaterResponse(
-                theater.theater_id,
-                theater.war_id,
-                theater.title,
-                theater.summary
-            )).ToList();
+            return theaters.Select(theater => 
+                Response(theater)
+            ).ToList();
         }
 
         public async Task<TheaterResponse?> GetByIdAsync(int id)
@@ -27,15 +22,10 @@
             if (theater == null)
                 return null;
 
-            return new TheaterResponse(
-                theater.theater_id,
-                theater.war_id,
-                theater.title,
-                theater.summary
-            );
+            return Response(theater);
         }
 
-        public async Task AddAsync(TheaterRequest theaterRequest)
+        public async Task<TheaterResponse> AddAsync(TheaterRequest theaterRequest)
         {
 
             var theater = new Theater
@@ -45,9 +35,11 @@
             };
 
             await _repository.AddAsync(theater);
+
+            return Response(theater);
         }
 
-        public async Task UpdateAsync(int theaterId, TheaterRequest request)
+        public async Task<TheaterResponse> UpdateAsync(int theaterId, TheaterRequest request)
         {
             var theater = await _repository.GetByIdAsync(theaterId);
             if (theater == null)
@@ -57,6 +49,8 @@
             theater.summary = request.Summary;
 
             await _repository.UpdateAsync(theater);
+
+            return Response(theater);
         }
 
         public async Task DeleteAsync(int theaterId)
@@ -67,6 +61,14 @@
 
             await _repository.DeleteAsync(theaterId);
         }
+
+        private TheaterResponse Response(Theater theater) =>
+            new TheaterResponse(
+                theater.theater_id,
+                theater.war_id,
+                theater.title,
+                theater.summary
+            );
 
         private void Exception() =>
             throw new KeyNotFoundException("Theater not found");

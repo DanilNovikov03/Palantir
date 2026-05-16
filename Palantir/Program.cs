@@ -24,6 +24,8 @@ builder.Services.AddScoped<ISideRepository, SideRepository>();
 builder.Services.AddScoped<ITheaterRepository, TheaterRepository>();
 builder.Services.AddScoped<IWarRepository, WarRepository>();
 builder.Services.AddScoped<IWarSideRepository, WarSideRepository>();
+// Add Service
+builder.Services.AddScoped<IWarService, WarService>();
 
 var app = builder.Build();
 

@@ -1,43 +1,32 @@
 ﻿
+using Palantir.Domain.Models;
+
 namespace Palantir.Application.Services
 {
     public class WarSideService : IWarSideService
     {
         IWarSideRepository _repository;
 
-        public WarSideService(IWarSideRepository repository)
-        {
+        public WarSideService(IWarSideRepository repository) =>
             _repository = repository;
-        }
+
 
         public async Task<List<WarSideResponse>> GetAllAsync()
         {
             var warSides = await _repository.GetAllAsync();
 
-            return warSides.Select(warSide => new WarSideResponse(
-                warSide.war_side_id,
-                warSide.war_id,
-                warSide.side_id,
-                warSide.joined_date,
-                warSide.out_date,
-                warSide.note
-            )).ToList();
+            return warSides.Select(warSide =>
+                Response(warSide)
+            ).ToList();
         }
 
         public async Task<WarSideResponse?> GetByIdAsync(int warSideId)
         {
-            var war = await _repository.GetByIdAsync(warSideId);
-            if (war == null)
+            var warSide = await _repository.GetByIdAsync(warSideId);
+            if (warSide == null)
                 return null;
 
-            return new WarSideResponse(
-                war.war_side_id,
-                war.war_id,
-                war.side_id,
-                war.joined_date,
-                war.out_date,
-                war.note
-            );
+            return Response(warSide);
         }
 
         public async Task<List<WarSideResponse>> GetBySideIdAsync(int sideId)
@@ -45,14 +34,9 @@ namespace Palantir.Application.Services
             var sides = await _repository
                 .GetBySideIdAsync(sideId);
 
-            return sides.Select(side => new WarSideResponse(
-                side.war_side_id,
-                side.war_id,
-                side.side_id,
-                side.joined_date,
-                side.out_date,
-                side.note
-            )).ToList();
+            return sides.Select(side =>
+                Response(side)
+            ).ToList();
         }
 
         public async Task<List<WarSideResponse>> GetByWarIdAsync(int warId)
@@ -60,14 +44,9 @@ namespace Palantir.Application.Services
             var wars = await _repository
                 .GetByWarIdAsync(warId);
 
-            return wars.Select(war => new WarSideResponse(
-                war.war_side_id,
-                war.war_id,
-                war.side_id,
-                war.joined_date,
-                war.out_date,
-                war.note
-            )).ToList();
+            return wars.Select(war => 
+                Response(war)
+            ).ToList();
         }
 
         public Task<WarSideResponse?> GetByIdsAsync(int warId, int sideId)
@@ -112,6 +91,16 @@ namespace Palantir.Application.Services
 
             await _repository.DeleteAsync(warSideId);
         }
+
+        private WarSideResponse Response(WarSide warSide) =>
+            new WarSideResponse(
+                warSide.war_side_id,
+                warSide.war_id,
+                warSide.side_id,
+                warSide.joined_date,
+                warSide.out_date,
+                warSide.note
+            );
 
         private void Exception() =>
             throw new KeyNotFoundException("war side not found");

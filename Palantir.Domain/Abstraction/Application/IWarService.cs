@@ -4,8 +4,8 @@
     {
         Task<List<WarResponse>> GetAllAsync();
         Task<WarResponse?> GetByIdAsync(int id);
-        Task AddAsync(WarRequest warRequest);
-        Task UpdateAsync(int id, WarRequest warRequest);
+        Task<WarResponse> AddAsync(WarRequest warRequest);
+        Task<WarResponse> UpdateAsync(int id, WarRequest warRequest);
         Task DeleteAsync(int id);
     }
 }

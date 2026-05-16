@@ -4,10 +4,9 @@
     {
         ISideRepository _repository;
 
-        public SideService(ISideRepository repository)
-        {
+        public SideService(ISideRepository repository) =>
             _repository = repository;
-        }
+
 
         public async Task<SideResponse?> GetByIdAsync(int id)
         {
@@ -16,13 +15,10 @@
             if (side == null)
                 return null;
 
-            return new SideResponse(
-                side.side_id,
-                side.title
-            );
+            return Response(side);
         }
 
-        public async Task AddAsync(SideRequest sideRequest)
+        public async Task<SideResponse> AddAsync(SideRequest sideRequest)
         {
             var side = new Side
             {
@@ -30,9 +26,11 @@
             };
 
             await _repository.AddAsync(side);
+
+            return Response(side);
         }
 
-        public async Task UpdateAsync(int id, SideRequest sideRequest)
+        public async Task<SideResponse> UpdateAsync(int id, SideRequest sideRequest)
         {
             var side = await _repository.GetByIdAsync(id);
             if (side == null)
@@ -41,6 +39,8 @@
             side.title = sideRequest.Title;
 
             await _repository.UpdateAsync(side);
+
+            return Response(side);
         }
 
         public async Task DeleteAsync(int id)
@@ -51,6 +51,12 @@
 
             await _repository.DeleteAsync(id);
         }
+
+        private SideResponse Response(Side side) =>
+            new SideResponse(
+                side.side_id,
+                side.title
+            );
 
         private void Exception() =>
             throw new KeyNotFoundException("side not found");
