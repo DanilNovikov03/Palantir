@@ -4,23 +4,49 @@ namespace Palantir.Presenatation.Controllers
     [Route("[controller]")]
     public class WarsController : ControllerBase
     {
-        private readonly IWarRepository _warsRep;
-        public WarsController(IWarRepository warsRep)
-        {
-            _warsRep = warsRep;
-        }
+        private readonly IWarService _warService;
+
+        public WarsController(IWarService warService) =>
+            _warService = warService;
+
 
         //[HttpGet(Name = "GetWars")]
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<War>>> GetAll() =>
-            await _warsRep.GetAllAsync();
+        public async Task<ActionResult<IEnumerable<War>>> GetAll()
+        {
+            var wars = await _warService.GetAllAsync();
+            return Ok(wars);
+        }
 
         [HttpGet("{id}")]
         public async Task<ActionResult<War>> GetById(int id)
         {
-            var war = await _warsRep.GetByIdAsync(id);
+            var war = await _warService.GetByIdAsync(id);
             return war is null ? 
                 NotFound() : Ok(war);
+        }
+
+        [HttpPost]
+        public async Task<ActionResult> Add(WarRequest warRequest)
+        {
+            var response = await _warService.AddAsync(warRequest);
+            return CreatedAtAction(nameof(GetById), new { id = response.Id });
+        }
+
+        [HttpPut]
+        public async Task<ActionResult> Update(int id, WarRequest warRequest)
+        {
+            var response = await _warService
+                .UpdateAsync(id, warRequest);
+            return response is null ?
+                NotFound() : NoContent();
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<ActionResult> Delete(int id)
+        {
+            await _warService.DeleteAsync(id);
+            return NoContent();
         }
     }
 }

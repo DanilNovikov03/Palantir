@@ -4,23 +4,41 @@
     [Route("[controller]")]
     public class OperationsController : ControllerBase
     {
-        private readonly IOperationRepository _operationRep;
+        private readonly IOperationService _operationService;
 
-        public OperationsController(IOperationRepository operationRep)
-        {
-            _operationRep = operationRep;
-        }
+        public OperationsController(IOperationService operationService) =>
+            _operationService = operationService;
 
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<Operation>>> GetAll() =>
-            await _operationRep.GetAllAsync();
 
         [HttpGet("{id}")]
         public async Task<ActionResult<Operation>> GetById(int id)
         {
-            var operation = await _operationRep.GetByIdAsync(id);
+            var operation = await _operationService.GetByIdAsync(id);
             return operation is null ? 
                 NotFound() : Ok(operation);
+        }
+
+        [HttpPost]
+        public async Task<ActionResult> Add(OperationRequest operationRequest)
+        {
+            var response = await _operationService.AddAsync(operationRequest);
+            return CreatedAtAction(nameof(GetById), new { id = response.Id });
+        }
+
+        [HttpPut]
+        public async Task<ActionResult> Update(int id, OperationRequest operationRequest)
+        {
+            var response = await _operationService
+                .UpdateAsync(id, operationRequest);
+            return response is null ?
+                NotFound() : NoContent();
+        }
+
+        [HttpDelete]
+        public async Task<ActionResult> Delete(int id)
+        {
+            await _operationService.DeleteAsync(id);
+            return NoContent();
         }
     }
 }

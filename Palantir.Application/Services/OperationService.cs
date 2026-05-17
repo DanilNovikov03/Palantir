@@ -1,5 +1,4 @@
-﻿
-namespace Palantir.Application.Services
+﻿namespace Palantir.Application.Services
 {
     public class OperationService : IOperationService
     {

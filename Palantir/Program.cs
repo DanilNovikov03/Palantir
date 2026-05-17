@@ -25,7 +25,13 @@ builder.Services.AddScoped<ITheaterRepository, TheaterRepository>();
 builder.Services.AddScoped<IWarRepository, WarRepository>();
 builder.Services.AddScoped<IWarSideRepository, WarSideRepository>();
 // Add Service
+builder.Services.AddScoped<IArmyService, ArmyService>();
+builder.Services.AddScoped<IOperationService, OperationService>();
+builder.Services.AddScoped<IOperationSideService, OperationSideService>();
+builder.Services.AddScoped<ISideService, SideService>();
+builder.Services.AddScoped<ITheaterService, TheaterService>();
 builder.Services.AddScoped<IWarService, WarService>();
+builder.Services.AddScoped<IWarSideService, WarSideService>();
 
 var app = builder.Build();
 

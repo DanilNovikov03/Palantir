@@ -14,7 +14,7 @@
 
             return wars.Select(war => 
                 Response(war)
-                ).ToList();
+            ).ToList();
         }
 
         public async Task<WarResponse?> GetByIdAsync(int id)
