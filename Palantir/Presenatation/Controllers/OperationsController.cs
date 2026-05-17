@@ -1,7 +1,7 @@
 ﻿namespace Palantir.Presenatation.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
+    [Route("api/operation")]
     public class OperationsController : ControllerBase
     {
         private readonly IOperationService _operationService;
@@ -11,7 +11,7 @@
 
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<Operation>> GetById(int id)
+        public async Task<ActionResult<OperationResponse>> GetById(int id)
         {
             var operation = await _operationService.GetByIdAsync(id);
             return operation is null ? 
@@ -25,7 +25,7 @@
             return CreatedAtAction(nameof(GetById), new { id = response.Id });
         }
 
-        [HttpPut]
+        [HttpPut("{id}")]
         public async Task<ActionResult> Update(int id, OperationRequest operationRequest)
         {
             var response = await _operationService

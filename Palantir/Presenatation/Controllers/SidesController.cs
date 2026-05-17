@@ -1,7 +1,7 @@
 ﻿namespace Palantir.Presenatation.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
+    [Route("api/sides")]
     public class SidesController : ControllerBase
     {
         private readonly ISideService _sideService;
@@ -11,7 +11,7 @@
 
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<Side>> GetById(int id)
+        public async Task<ActionResult<SideResponse>> GetById(int id)
         {
             var side = await _sideService.GetByIdAsync(id);
             return side is null ? 
@@ -25,7 +25,7 @@
             return CreatedAtAction(nameof(GetById), new { response.Id });
         }
 
-        [HttpPut]
+        [HttpPut("{id}")]
         public async Task<ActionResult> Update(int id, SideRequest sideRequest)
         {
             var response = await _sideService

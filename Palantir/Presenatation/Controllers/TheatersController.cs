@@ -1,7 +1,7 @@
 ﻿namespace Palantir.Presenatation.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
+    [Route("api/theater")]
     public class TheatersController : ControllerBase
     {
         private readonly ITheaterService _theaterService;
@@ -11,7 +11,7 @@
 
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<Theater>> GetById(int id)
+        public async Task<ActionResult<TheaterResponse>> GetById(int id)
         {
             var theater = await _theaterService.GetByIdAsync(id);
             return theater is null ? 
@@ -25,10 +25,10 @@
             return CreatedAtAction(nameof(GetById), new { id = response.Id });
         }
 
-        [HttpPut]
+        [HttpPut("{id}")]
         public async Task<ActionResult> Update(int id, TheaterRequest theaterRequest)
         {
-            var response = _theaterService
+            var response = await _theaterService
                 .UpdateAsync(id, theaterRequest);
             return response is null ?
                 NotFound() : NoContent();

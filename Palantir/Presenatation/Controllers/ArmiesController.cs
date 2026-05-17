@@ -2,7 +2,7 @@
 {
 
     [ApiController]
-    [Route("[controller]")]
+    [Route("api/army")]
     public class ArmiesController : ControllerBase
     {
         private readonly IArmyService _armyService;
@@ -11,9 +11,8 @@
             _armyService = armyService;
 
 
-        //[HttpGet(Name = "GetArmy")]
         [HttpGet("{id}")]
-        public async Task<ActionResult<Army>> GetById(int id)
+        public async Task<ActionResult<ArmyResponse>> GetById(int id)
         {
             var army = await _armyService.GetByIdAsync(id);
             return army is null ? 
@@ -27,7 +26,7 @@
             return CreatedAtAction(nameof(GetById), new { id = response.Id });
         }
 
-        [HttpPut]
+        [HttpPut("{id}")]
         public async Task<ActionResult> Update(int id, UpdateArmyRequest armyRequest)
         {
             var response = await _armyService

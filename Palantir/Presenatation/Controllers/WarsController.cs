@@ -1,7 +1,7 @@
 namespace Palantir.Presenatation.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
+    [Route("api/war")]
     public class WarsController : ControllerBase
     {
         private readonly IWarService _warService;
@@ -12,14 +12,14 @@ namespace Palantir.Presenatation.Controllers
 
         //[HttpGet(Name = "GetWars")]
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<War>>> GetAll()
+        public async Task<ActionResult<IEnumerable<WarResponse>>> GetAll()
         {
             var wars = await _warService.GetAllAsync();
             return Ok(wars);
         }
 
         [HttpGet("{id}")]
-        public async Task<ActionResult<War>> GetById(int id)
+        public async Task<ActionResult<WarResponse>> GetById(int id)
         {
             var war = await _warService.GetByIdAsync(id);
             return war is null ? 
@@ -33,7 +33,7 @@ namespace Palantir.Presenatation.Controllers
             return CreatedAtAction(nameof(GetById), new { id = response.Id });
         }
 
-        [HttpPut]
+        [HttpPut("{id}")]
         public async Task<ActionResult> Update(int id, WarRequest warRequest)
         {
             var response = await _warService
