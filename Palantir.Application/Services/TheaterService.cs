@@ -2,16 +2,33 @@
 {
     public class TheaterService : ITheaterService
     {
-        ITheaterRepository _repository;
+        private readonly ITheaterRepository _repository;
+        private readonly IWarRepository _warRepository;
 
-        public TheaterService(ITheaterRepository repository) =>
+        public TheaterService(ITheaterRepository repository, IWarRepository warRepository)
+        {
             _repository = repository;
+            _warRepository = warRepository;
+        }
 
         public async Task<List<TheaterResponse>> GetAllAsync()
         {
             var theaters = await _repository.GetAllAsync();
 
             return theaters.Select(theater => 
+                Response(theater)
+            ).ToList();
+        }
+
+        public async Task<List<TheaterResponse>?> GetByWarIdAsync(int warId)
+        {
+            var warExists = await _warRepository.ExistsAsync(warId);
+            if (!warExists)
+                return null;
+
+            var theaters = await _repository.GetByWarIdAsync(warId);
+
+            return theaters.Select(theater =>
                 Response(theater)
             ).ToList();
         }

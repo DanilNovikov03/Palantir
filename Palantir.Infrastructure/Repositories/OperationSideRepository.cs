@@ -4,10 +4,8 @@
     {
         private readonly PalantirDbContext _dbContext;
 
-        public OperationSideRepository(PalantirDbContext dbContext)
-        {
+        public OperationSideRepository(PalantirDbContext dbContext) =>
             _dbContext = dbContext;
-        }
 
 
         public async Task<List<OperationSide>> GetByOperationIdAsync(int operationId) =>

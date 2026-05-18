@@ -4,10 +4,8 @@
     {
         private readonly PalantirDbContext _dbContext;
 
-        public SideRepository(PalantirDbContext dbContext)
-        {
+        public SideRepository(PalantirDbContext dbContext) =>
             _dbContext = dbContext;
-        }
 
 
         public async Task<List<Side>> GetAllAsync() =>

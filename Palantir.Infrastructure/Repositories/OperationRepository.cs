@@ -4,10 +4,8 @@
     {
         private readonly PalantirDbContext _dbContext;
 
-        public OperationRepository(PalantirDbContext dbContext)
-        {
+        public OperationRepository(PalantirDbContext dbContext) =>
             _dbContext = dbContext;
-        }
 
 
         public async Task<List<Operation>> GetAllAsync() =>

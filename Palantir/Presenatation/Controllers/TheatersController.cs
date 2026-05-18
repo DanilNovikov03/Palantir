@@ -10,7 +10,7 @@
             _theaterService = theaterService;
 
 
-        [HttpGet("{id}")]
+        [HttpGet("{id:int}")]
         public async Task<ActionResult<TheaterResponse>> GetById(int id)
         {
             var theater = await _theaterService.GetByIdAsync(id);
@@ -18,14 +18,28 @@
                 NotFound() : Ok(theater);
         }
 
+        [HttpGet("by-war/{warId:int}")]
+        public async Task<ActionResult<IEnumerable<TheaterResponse>>>
+            GetByWarId(int warId)
+        {
+            var theaters = await _theaterService
+                .GetByWarIdAsync(warId);
+
+            return Ok(theaters);
+        }
+
         [HttpPost]
         public async Task<ActionResult> Add(TheaterRequest theaterRequest)
         {
             var response = await _theaterService.AddAsync(theaterRequest);
-            return CreatedAtAction(nameof(GetById), new { id = response.Id });
+            return CreatedAtAction(
+                nameof(GetById), 
+                new { id = response.Id }, 
+                response
+            );
         }
 
-        [HttpPut("{id}")]
+        [HttpPut("{id:int}")]
         public async Task<ActionResult> Update(int id, TheaterRequest theaterRequest)
         {
             var response = await _theaterService
@@ -34,7 +48,7 @@
                 NotFound() : NoContent();
         }
 
-        [HttpDelete]
+        [HttpDelete("{id:int}")]
         public async Task<ActionResult> Delete(int id)
         {
             await _theaterService.DeleteAsync(id);
