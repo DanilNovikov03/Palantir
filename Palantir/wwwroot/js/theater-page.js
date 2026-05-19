@@ -34,7 +34,7 @@
 
         const operations = await getJson(`${API_BASE_URL}/operation/by-theater/${theaterId}`);
 
-        renderOperations(operations, operationsList);
+        renderOperations(operations, operationsList, warId, theaterId);
 
         operationsSection.classList.remove("d-none");
         loadingMessage.classList.add("d-none");
@@ -52,7 +52,7 @@ function renderTheater(theater, titleElement, summaryElement) {
         "Описание отсутствует.";
 }
 
-function renderOperations(operations, container) {
+function renderOperations(operations, container, warId, theaterId) {
     container.innerHTML = "";
 
     if (!operations || operations.length === 0) {
@@ -92,7 +92,7 @@ function renderOperations(operations, container) {
                         ${datesText}
                     </p>
 
-                    <a href="/operation.html?operationId=${operation.id}" class="btn btn-primary mt-auto">
+                    <a href="/operation.html?warId=${warId}&theaterId=${theaterId}&operationId=${operation.id}" class="btn btn-primary mt-auto">
                         Открыть операцию
                     </a>
                 </div>
