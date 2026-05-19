@@ -17,6 +17,11 @@
                     o => o.operation_id == id
                 );
 
+        public async Task<List<Operation>> GetByTheaterIdAsync(int theaterId) =>
+            await _dbContext.operations
+                .Where(operation => operation.theater_id == theaterId)
+                .ToListAsync();
+
         public async Task AddAsync(Operation operation)
         {
             await _dbContext.operations.AddAsync(operation);

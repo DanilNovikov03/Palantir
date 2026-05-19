@@ -1,11 +1,17 @@
-﻿namespace Palantir.Application.Services
+﻿
+namespace Palantir.Application.Services
 {
     public class OperationService : IOperationService
     {
-        IOperationRepository _reposirory;
+        private readonly IOperationRepository _reposirory;
+        private readonly ITheaterRepository _theaterRepos;
 
-        public OperationService(IOperationRepository repository) =>
+        public OperationService(
+            IOperationRepository repository, ITheaterRepository theaterRepos)
+        {
             _reposirory = repository;
+            _theaterRepos = theaterRepos;
+        }
 
         public async Task<OperationResponse?> GetByIdAsync(int id)
         {
@@ -15,6 +21,20 @@
                 return null;
 
             return Response(oper);
+        }
+
+        public async Task<List<OperationResponse>?> GetByTheaterIdAsync(int theaterId)
+        {
+            var theaterExists = await _theaterRepos.ExistsAsync(theaterId);
+            if (!theaterExists)
+                return null;
+
+            var operations = await _reposirory
+                .GetByTheaterIdAsync(theaterId);
+
+            return operations.Select(operation =>
+                Response(operation)
+            ).ToList();
         }
 
         public async Task<OperationResponse> AddAsync(OperationRequest operRequest)
