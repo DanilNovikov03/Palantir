@@ -481,3 +481,4 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 /projectNote
+Palantir/wwwroot/js/map-config.local.js
