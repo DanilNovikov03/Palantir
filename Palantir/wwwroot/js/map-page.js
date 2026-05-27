@@ -141,13 +141,7 @@
     }
 
     async function fetchOperation(operationId) {
-        // Если у тебя в контроллере другой маршрут, поменяй список ниже.
-        // Чаще всего для OperationsController подходит /api/Operations/{id}.
-        const urls = [
-            `/api/Operations/${encodeURIComponent(operationId)}`,
-            `/api/operations/${encodeURIComponent(operationId)}`,
-            `/api/Operation/${encodeURIComponent(operationId)}`
-        ];
+        const urls = `/api/operation/${encodeURIComponent(operationId)}`;
 
         let lastError = null;
 
