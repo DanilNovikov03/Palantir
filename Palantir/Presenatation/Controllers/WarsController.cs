@@ -10,7 +10,6 @@ namespace Palantir.Presenatation.Controllers
             _warService = warService;
 
 
-        //[HttpGet(Name = "GetWars")]
         [HttpGet]
         public async Task<ActionResult<IEnumerable<WarResponse>>> GetAll()
         {

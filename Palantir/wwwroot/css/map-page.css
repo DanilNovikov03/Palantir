@@ -41,6 +41,10 @@ body {
     height: 100vh;
 }
 
+.map-container-wrapper-relative {
+    position: relative;
+}
+
 #map {
     height: 100%;
     width: 100%;
@@ -58,9 +62,9 @@ body {
     cursor: pointer;
 }
 
-    .object-list-item:hover {
-        background: #f1f3f5;
-    }
+.object-list-item:hover {
+    background: #f1f3f5;
+}
 
 .army-marker {
     width: 34px;
@@ -94,6 +98,47 @@ body {
     text-underline-offset: 2px;
 }
 
+.control-zone-drawing-panel {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 1000;
+    width: 330px;
+    max-width: calc(100% - 32px);
+    max-height: calc(100% - 32px);
+    overflow-y: auto;
+}
+
+.control-zone-coordinates-output {
+    max-height: 180px;
+    overflow: auto;
+}
+
+.map-container-wrapper {
+    position: relative;
+}
+
+.map-draw-panel {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 1000;
+    width: 300px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.map-draw-panel pre {
+    max-height: 180px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+/*
+Потом может сделаю это для телефонов, а так вроде не надо пока
 @media (max-width: 900px) {
     body {
         overflow: auto;
@@ -115,3 +160,4 @@ body {
         height: 70vh;
     }
 }
+    */

@@ -8,6 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <link rel="stylesheet" href="css/map-page.css">
+
 </head>
 <body>
     <div class="map-page">
@@ -32,8 +33,17 @@
 
             <section class="mb-4">
                 <h2 class="h6 mb-2">Информация об операции</h2>
+
                 <div id="operationInfo" class="small text-secondary">
-                    Данные пока не загружены.
+                    <div><strong>ID операции:</strong> <span id="operationInfoId">не указан</span></div>
+                    <div><strong>Название:</strong> <span id="operationInfoTitle">не указано</span></div>
+                    <div><strong>Дата начала:</strong> <span id="operationInfoStartDate">не указана</span></div>
+                    <div><strong>Дата окончания:</strong> <span id="operationInfoEndDate">не указана</span></div>
+
+                    <div class="mt-2">
+                        <strong>Описание:</strong><br>
+                        <span id="operationInfoSummary">Данные пока не загружены.</span>
+                    </div>
                 </div>
             </section>
 
@@ -75,18 +85,6 @@
                         Демонстрационные позиции войсковых соединений.
                     </div>
                 </div>
-
-                <div class="layer-card">
-                    <div class="form-check">
-                        <input id="frontLinesLayerToggle" class="form-check-input" type="checkbox" checked>
-                        <label class="form-check-label" for="frontLinesLayerToggle">
-                            Линия фронта
-                        </label>
-                    </div>
-                    <div class="small text-secondary mt-1">
-                        Демонстрационная линия фронта.
-                    </div>
-                </div>
             </section>
 
             <section class="mb-4">
@@ -109,6 +107,49 @@
         <main class="map-container-wrapper">
             <div id="map"></div>
         </main>
+
+        <template id="objectListItemTemplate">
+            <button type="button" class="list-group-item list-group-item-action object-list-item">
+                <div class="fw-semibold" data-object-title></div>
+                <div class="text-secondary" data-object-type></div>
+            </button>
+        </template>
+
+        <template id="controlZoneDrawingPanelTemplate">
+            <div class="card shadow-sm control-zone-drawing-panel">
+                <div class="card-body">
+                    <h2 class="h6 mb-2">Создание зоны контроля</h2>
+
+                    <div id="controlZoneDrawingStatus" class="small text-secondary mb-3">
+                        Режим рисования выключен.
+                    </div>
+
+                    <div class="d-grid gap-2 mb-3">
+                        <button id="toggleControlZoneDrawingBtn" class="btn btn-success btn-sm" type="button">
+                            Добавить зону контроля
+                        </button>
+
+                        <button id="finishControlZoneDrawingBtn" class="btn btn-primary btn-sm" type="button" disabled>
+                            Завершить зону
+                        </button>
+
+                        <button id="clearControlZoneDraftBtn" class="btn btn-outline-danger btn-sm" type="button" disabled>
+                            Очистить черновик
+                        </button>
+                    </div>
+
+                    <div class="small text-secondary mb-2">
+                        Нажимай по карте, чтобы добавлять точки полигона.
+                        Минимум нужно 3 точки.
+                    </div>
+
+                    <div class="small fw-semibold mb-1">Координаты черновика:</div>
+
+                    <pre id="controlZoneCoordinatesOutput"
+                         class="small bg-light border rounded p-2 mb-0 control-zone-coordinates-output">[]</pre>
+                </div>
+            </div>
+        </template>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

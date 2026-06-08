@@ -33,7 +33,7 @@
                 .GetByOperationIdAsync(operationId);
 
             return operations.Select(oper => 
-                Response(oper)
+                    Response(oper)
                 ).ToList();
         }
 
@@ -43,7 +43,7 @@
                 .GetByWarSideIdAsync(warSideId);
 
             return warSides.Select(warSide => 
-                Response(warSide)
+                    Response(warSide)
                 ).ToList();
         }
 

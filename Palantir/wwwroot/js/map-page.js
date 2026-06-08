@@ -1,15 +1,21 @@
-﻿// map-page.js
-// Страница карты открывается так: /map.html?operationId=1
-// Пока Event и ControlZones не реализованы, карта показывает временные слои-заглушки.
-
-(function () {
+﻿(function () {
     const DEFAULT_CENTER = [51.75, 36.19];
     const DEFAULT_ZOOM = 7;
 
     const pageState = {
         operationId: getQueryParam("operationId"),
         operation: null,
-        featureLayers: []
+        featureLayers: [],
+        currentMapData: null,
+
+        controlZoneDrawing: {
+            isDrawing: false,
+            coordinates: [],
+            pointMarkers: [],
+            draftLine: null,
+            draftPolygon: null,
+            nextTempZoneId: 1000
+        }
     };
 
     const elements = {
@@ -17,12 +23,26 @@
         fitMapBtn: document.getElementById("fitMapBtn"),
         operationSubtitle: document.getElementById("operationSubtitle"),
         operationInfo: document.getElementById("operationInfo"),
+
+        operationInfoId: document.getElementById("operationInfoId"),
+        operationInfoTitle: document.getElementById("operationInfoTitle"),
+        operationInfoStartDate: document.getElementById("operationInfoStartDate"),
+        operationInfoEndDate: document.getElementById("operationInfoEndDate"),
+        operationInfoSummary: document.getElementById("operationInfoSummary"),
+
         statusMessage: document.getElementById("statusMessage"),
         objectsList: document.getElementById("objectsList"),
+        objectListItemTemplate: document.getElementById("objectListItemTemplate"),
         eventsLayerToggle: document.getElementById("eventsLayerToggle"),
         controlZonesLayerToggle: document.getElementById("controlZonesLayerToggle"),
         armiesLayerToggle: document.getElementById("armiesLayerToggle"),
-        frontLinesLayerToggle: document.getElementById("frontLinesLayerToggle")
+
+        drawingPanel: null,
+        toggleDrawingBtn: null,
+        finishDrawingBtn: null,
+        clearDraftBtn: null,
+        drawingStatus: null,
+        coordinatesOutput: null
     };
 
     const map = L.map("map", {
@@ -34,21 +54,17 @@
 
     const yandexTilesApiKey = window.PALANTIR_MAP_CONFIG?.YANDEX_TILES_API_KEY;
 
-    if (!yandexTilesApiKey) {
-        console.error("Не указан Yandex Tiles API key. Проверь файл js/map-config.local.js");
-    }
-
     L.tileLayer(
         `https://tiles.api-maps.yandex.ru/v1/tiles/?x={x}&y={y}&z={z}&lang=ru_RU&l=map&projection=web_mercator&apikey=${yandexTilesApiKey}`,
         {
             maxZoom: 19,
             tileSize: 256,
             attribution: `
-            <a href="https://yandex.ru/maps/" target="_blank" rel="noopener">© Яндекс</a>
-            <a class="yandex-terms-link" href="https://yandex.ru/legal/maps_api/ru/" target="_blank" rel="noopener">Условия использования</a>
-            |
-            <a href="https://leafletjs.com/" target="_blank" rel="noopener">Leaflet</a>
-        `
+                <a href="https://yandex.ru/maps/" target="_blank" rel="noopener">© Яндекс</a>
+                <a class="yandex-terms-link" href="https://yandex.ru/legal/maps_api/ru/" target="_blank" rel="noopener">Условия использования</a>
+                |
+                <a href="https://leafletjs.com/" target="_blank" rel="noopener">Leaflet</a>
+            `
         }
     ).addTo(map);
 
@@ -56,7 +72,10 @@
         events: L.layerGroup().addTo(map),
         controlZones: L.layerGroup().addTo(map),
         armies: L.layerGroup().addTo(map),
-        frontLines: L.layerGroup().addTo(map)
+
+        // Отдельный слой для черновика создаваемой зоны.
+        // Он не сохраняется в БД и нужен только для рисования.
+        controlZoneDraft: L.layerGroup().addTo(map)
     };
 
     const eventIcon = L.divIcon({
@@ -81,13 +100,7 @@
         setupNavigation();
         setupLayerToggles();
         setupFitButton();
-
-        if (!pageState.operationId) {
-            setStatus("Не передан operationId. Открой страницу так: /map.html?operationId=1", "warning");
-            renderOperationInfo(null);
-            renderTemporaryMapObjects();
-            return;
-        }
+        setupControlZoneDrawing();
 
         await loadOperation(pageState.operationId);
         renderTemporaryMapObjects();
@@ -95,7 +108,7 @@
 
     function setupNavigation() {
         if (!pageState.operationId) {
-            elements.backToOperationBtn.href = "/operations.html";
+            elements.backToOperationBtn.href = "/operation.html";
             return;
         }
 
@@ -106,7 +119,6 @@
         bindLayerToggle(elements.eventsLayerToggle, mapLayers.events);
         bindLayerToggle(elements.controlZonesLayerToggle, mapLayers.controlZones);
         bindLayerToggle(elements.armiesLayerToggle, mapLayers.armies);
-        bindLayerToggle(elements.frontLinesLayerToggle, mapLayers.frontLines);
     }
 
     function setupFitButton() {
@@ -114,6 +126,10 @@
     }
 
     function bindLayerToggle(checkbox, layer) {
+        if (!checkbox) {
+            return;
+        }
+
         checkbox.addEventListener("change", function () {
             if (checkbox.checked) {
                 layer.addTo(map);
@@ -121,6 +137,276 @@
                 map.removeLayer(layer);
             }
         });
+    }
+
+    function setupControlZoneDrawing() {
+        createControlZoneDrawingPanel();
+
+        elements.toggleDrawingBtn.addEventListener("click", toggleControlZoneDrawingMode);
+        elements.finishDrawingBtn.addEventListener("click", finishControlZoneDrawing);
+        elements.clearDraftBtn.addEventListener("click", clearControlZoneDraft);
+
+        map.on("click", handleMapClickForControlZoneDrawing);
+
+        updateDrawingPanel();
+    }
+
+    function createControlZoneDrawingPanel() {
+        const wrapper = document.querySelector(".map-container-wrapper") ?? document.body;
+
+        if (getComputedStyle(wrapper).position === "static") {
+            wrapper.classList.add("map-container-wrapper-relative");
+        }
+
+        const template = document.querySelector("#controlZoneDrawingPanelTemplate");
+        const panel = template.content.firstElementChild.cloneNode(true);
+        wrapper.appendChild(panel);
+
+        // Чтобы карта не реагированал
+        L.DomEvent.disableClickPropagation(panel);
+        L.DomEvent.disableScrollPropagation(panel);
+
+        elements.drawingPanel = panel;
+        elements.toggleDrawingBtn = panel.querySelector("#toggleControlZoneDrawingBtn");
+        elements.finishDrawingBtn = panel.querySelector("#finishControlZoneDrawingBtn");
+        elements.clearDraftBtn = panel.querySelector("#clearControlZoneDraftBtn");
+        elements.drawingStatus = panel.querySelector("#controlZoneDrawingStatus");
+        elements.coordinatesOutput = panel.querySelector("#controlZoneCoordinatesOutput");
+    }
+
+    function toggleControlZoneDrawingMode() {
+        if (pageState.controlZoneDrawing.isDrawing) {
+            stopControlZoneDrawingMode();
+        } else {
+            startControlZoneDrawingMode();
+        }
+
+        updateDrawingPanel();
+    }
+
+    function startControlZoneDrawingMode() {
+        pageState.controlZoneDrawing.isDrawing = true;
+        map.getContainer().style.cursor = "crosshair";
+
+        setStatus(
+            "Режим создания зоны контроля включён. Нажимай по карте, чтобы добавлять точки полигона.",
+            "info"
+        );
+    }
+
+    function stopControlZoneDrawingMode() {
+        pageState.controlZoneDrawing.isDrawing = false;
+        map.getContainer().style.cursor = "";
+
+        setStatus(
+            "Режим создания зоны контроля выключен. Уже поставленные точки черновика сохранены на фронте.",
+            "secondary"
+        );
+    }
+
+    function handleMapClickForControlZoneDrawing(event) {
+        if (!pageState.controlZoneDrawing.isDrawing) {
+            return;
+        }
+
+        const lat = Number(event.latlng.lat.toFixed(6));
+        const lng = Number(event.latlng.lng.toFixed(6));
+
+        const coordinate = [lat, lng];
+
+        pageState.controlZoneDrawing.coordinates.push(coordinate);
+
+        const pointNumber = pageState.controlZoneDrawing.coordinates.length;
+
+        const marker = L.circleMarker(coordinate, {
+            radius: 5,
+            color: "#198754",
+            fillColor: "#198754",
+            fillOpacity: 0.9,
+            weight: 2
+        }).bindTooltip(`Точка ${pointNumber}: ${lat}, ${lng}`);
+
+        marker.addTo(mapLayers.controlZoneDraft);
+        pageState.controlZoneDrawing.pointMarkers.push(marker);
+
+        redrawControlZoneDraft();
+        updateDrawingPanel();
+    }
+
+    function redrawControlZoneDraft() {
+        const drawing = pageState.controlZoneDrawing;
+        const coordinates = drawing.coordinates;
+
+        if (drawing.draftLine) {
+            mapLayers.controlZoneDraft.removeLayer(drawing.draftLine);
+            drawing.draftLine = null;
+        }
+
+        if (drawing.draftPolygon) {
+            mapLayers.controlZoneDraft.removeLayer(drawing.draftPolygon);
+            drawing.draftPolygon = null;
+        }
+
+        if (coordinates.length < 2) {
+            return;
+        }
+
+        if (coordinates.length === 2) {
+            drawing.draftLine = L.polyline(coordinates, {
+                color: "#198754",
+                weight: 2,
+                dashArray: "6 6"
+            });
+
+            drawing.draftLine.addTo(mapLayers.controlZoneDraft);
+            return;
+        }
+
+        drawing.draftPolygon = L.polygon(coordinates, {
+            color: "#198754",
+            fillColor: "#198754",
+            fillOpacity: 0.2,
+            weight: 2,
+            dashArray: "6 6"
+        });
+
+        drawing.draftPolygon.addTo(mapLayers.controlZoneDraft);
+    }
+
+    async function finishControlZoneDrawing() {
+        const drawing = pageState.controlZoneDrawing;
+
+        if (drawing.coordinates.length < 3) {
+            setStatus("Для зоны контроля нужно минимум 3 точки.", "warning");
+            return;
+        }
+
+        try {
+            setStatus("Сохраняю зону контроля в базу данных...", "info");
+
+            await saveControlZoneToBackend(drawing.coordinates);
+
+            const newZone = {
+                id: drawing.nextTempZoneId,
+                title: `Новая зона контроля #${drawing.nextTempZoneId}`,
+                description: "Зона создана и отправлена на backend.",
+                side: "Draft",
+                coordinates: drawing.coordinates.map(point => [...point])
+            };
+
+            drawing.nextTempZoneId += 1;
+
+            addControlZone(newZone);
+
+            if (pageState.currentMapData) {
+                pageState.currentMapData.controlZones.push(newZone);
+                renderObjectsList(pageState.currentMapData);
+            }
+
+            await renderTemporaryMapObjects();
+            clearControlZoneDraft();
+
+            setStatus("Зона контроля сохранена в БД и карта обновлена.", "success");
+
+        } catch (error) {
+            console.error(error);
+            setStatus("Не удалось сохранить зону контроля в базу данных.", "danger");
+        }
+    }
+
+    async function fetchControlZonesByWarAndDate(warId, date) {
+        const url = `/api/control-zones/by-war-date?warId=${encodeURIComponent(warId)}&date=${encodeURIComponent(date)}`;
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Ошибка загрузки зон контроля: ${response.status}. ${errorText}`);
+        }
+
+        return await response.json();
+    }
+
+    function convertGeoJsonMultiPolygonToLeafletCoordinates(geom) {
+        if (!geom || geom.type !== "MultiPolygon") {
+            return [];
+        }
+
+        // Берём первый polygon и первое кольцо polygon.
+        const firstPolygon = geom.coordinates?.[0];
+        const firstRing = firstPolygon?.[0];
+
+        if (!firstRing) {
+            return [];
+        }
+
+        return firstRing.map(point => {
+            const lng = point[0];
+            const lat = point[1];
+
+            return [lat, lng];
+        });
+    }
+
+    function mapBackendControlZoneToFrontendZone(zone) {
+        return {
+            id: zone.id,
+            title: `Зона контроля #${zone.id}`,
+            description: `Дата: ${formatDate(zone.dateControl)}. Точность: ${zone.precisionControl}`,
+            side: String(zone.warSideId),
+            warId: zone.warId,
+            warSideId: zone.warSideId,
+            dateControl: zone.dateControl,
+            precisionControl: zone.precisionControl,
+            coordinates: convertGeoJsonMultiPolygonToLeafletCoordinates(zone.geom)
+        };
+    }
+
+    // Временно
+    function getCurrentWarId() {
+        return pageState.operation?.warId ?? 1;
+    }
+
+    function getCurrentMapDate() {
+        return "1943-07-05";
+    }
+
+    function clearControlZoneDraft() {
+        const drawing = pageState.controlZoneDrawing;
+
+        drawing.coordinates = [];
+        drawing.pointMarkers = [];
+        drawing.draftLine = null;
+        drawing.draftPolygon = null;
+
+        mapLayers.controlZoneDraft.clearLayers();
+
+        updateDrawingPanel();
+    }
+
+    function updateDrawingPanel() {
+        const drawing = pageState.controlZoneDrawing;
+
+        if (!elements.toggleDrawingBtn) {
+            return;
+        }
+
+        elements.toggleDrawingBtn.textContent = drawing.isDrawing
+            ? "Остановить рисование"
+            : "Добавить зону контроля";
+
+        elements.toggleDrawingBtn.className = drawing.isDrawing
+            ? "btn btn-warning btn-sm"
+            : "btn btn-success btn-sm";
+
+        elements.finishDrawingBtn.disabled = drawing.coordinates.length < 3;
+        elements.clearDraftBtn.disabled = drawing.coordinates.length === 0;
+
+        elements.drawingStatus.textContent = drawing.isDrawing
+            ? `Режим рисования включён. Точек: ${drawing.coordinates.length}.`
+            : `Режим рисования выключен. Точек в черновике: ${drawing.coordinates.length}.`;
+
+        elements.coordinatesOutput.textContent = JSON.stringify(drawing.coordinates, null, 2);
     }
 
     async function loadOperation(operationId) {
@@ -141,72 +427,94 @@
     }
 
     async function fetchOperation(operationId) {
-        const urls = `/api/operation/${encodeURIComponent(operationId)}`;
-
-        let lastError = null;
-
-        for (const url of urls) {
-            try {
-                const response = await fetch(url);
-
-                if (!response.ok) {
-                    lastError = new Error(`Ошибка ${response.status} при запросе ${url}`);
-                    continue;
-                }
-
-                return await response.json();
-            } catch (error) {
-                lastError = error;
-            }
-        }
-
-        throw lastError ?? new Error("Не удалось загрузить операцию.");
+        const url = `/api/operation/${encodeURIComponent(operationId)}`
+        const response = await fetch(url);
+        return await response.json();
     }
 
     function renderOperationInfo(operation) {
         if (!operation) {
-            elements.operationSubtitle.textContent = pageState.operationId
+            const fallbackTitle = pageState.operationId
                 ? `Операция #${pageState.operationId}`
                 : "Операция не выбрана";
 
-            elements.operationInfo.innerHTML = `
-                <div><strong>ID операции:</strong> ${escapeHtml(pageState.operationId ?? "не указан")}</div>
-                <div class="mt-2">Данные операции не были получены из API.</div>
-            `;
+            elements.operationSubtitle.textContent = fallbackTitle;
+
+            elements.operationInfoId.textContent = pageState.operationId ?? "не указан";
+            elements.operationInfoTitle.textContent = "не указано";
+            elements.operationInfoStartDate.textContent = "не указана";
+            elements.operationInfoEndDate.textContent = "не указана";
+            elements.operationInfoSummary.textContent = "Данные операции не были получены из API.";
+
             return;
         }
 
-        const title = operation.title
-            ?? operation.name
-            ?? operation.operationName
-            ?? `Операция #${pageState.operationId}`;
-
-        const summary = operation.summary
-            ?? operation.description
-            ?? operation.note
-            ?? "Описание операции пока не указано.";
-
-        const startDate = operation.startDate
-            ?? operation.dateStart
-            ?? operation.beginDate
-            ?? operation.startedAt
-            ?? null;
-
-        const endDate = operation.endDate
-            ?? operation.dateEnd
-            ?? operation.finishDate
-            ?? operation.finishedAt
-            ?? null;
+        const title = operation.title ?? `Операция #${pageState.operationId}`;
+        const summary = operation.summary ?? null;
+        const startDate = operation.startDate ?? null;
+        const endDate = operation.endDate ?? null;
 
         elements.operationSubtitle.textContent = title;
 
-        elements.operationInfo.innerHTML = `
-            <div><strong>ID операции:</strong> ${escapeHtml(pageState.operationId)}</div>
-            <div><strong>Название:</strong> ${escapeHtml(title)}</div>
-            <div><strong>Дата начала:</strong> ${escapeHtml(formatDate(startDate))}</div>
-            <div><strong>Дата окончания:</strong> ${escapeHtml(formatDate(endDate))}</div>
-            <div class="mt-2"><strong>Описание:</strong><br>${escapeHtml(summary)}</div>
-        `;
+        elements.operationInfoId.textContent = pageState.operationId ?? operation.id ?? "не указан";
+        elements.operationInfoTitle.textContent = title;
+        elements.operationInfoStartDate.textContent = formatDate(startDate);
+        elements.operationInfoEndDate.textContent = formatDate(endDate);
+        elements.operationInfoSummary.textContent = summary;
+    }
+
+    function createMultiPolygonGeoJsonFromLeafletCoordinates(leafletCoordinates) {
+        const ring = leafletCoordinates.map(point => {
+            const lat = point[0];
+            const lng = point[1];
+
+            return [lng, lat];
+        });
+
+        const firstPoint = ring[0];
+        const lastPoint = ring[ring.length - 1];
+
+        const isClosed =
+            firstPoint[0] === lastPoint[0] &&
+            firstPoint[1] === lastPoint[1];
+
+        if (!isClosed) {
+            ring.push([...firstPoint]);
+        }
+
+        return {
+            type: "MultiPolygon",
+            coordinates: [
+                [
+                    ring
+                ]
+            ]
+        };
+    }
+
+    async function saveControlZoneToBackend(coordinates) {
+        const request = {
+            warId: 1,
+            warSideId: 2,
+            dateControl: "1943-07-05",
+            precisionControl: "Exact",
+            geom: createMultiPolygonGeoJsonFromLeafletCoordinates(coordinates)
+        };
+
+        const response = await fetch("/api/control-zones", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(request)
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Ошибка сохранения зоны контроля: ${response.status}. ${errorText}`);
+        }
+
+        return await response.json().catch(() => null);
     }
 
     function setMapCenterFromOperation(operation) {
@@ -218,13 +526,24 @@
         }
     }
 
-    function renderTemporaryMapObjects() {
+    async function renderTemporaryMapObjects() {
         clearMapLayers();
 
         const demoData = createTemporaryMapData();
 
-        demoData.controlZones.forEach(addControlZone);
-        demoData.frontLines.forEach(addFrontLine);
+        // Пока события и армии оставляем заглушками.
+        // А зоны контроля теперь пробуем загрузить из БД.
+        //demoData.controlZones = [];
+
+        const warId = getCurrentWarId();
+        const date = getCurrentMapDate();
+
+        const backendZones = await fetchControlZonesByWarAndDate(warId, date);
+        const zones = backendZones.map(mapBackendControlZoneToFrontendZone);
+        //zones.forEach(addControlZone);
+
+        zones.forEach(addControlZone);
+        //demoData.controlZones.forEach(addControlZone); //!!!!!
         demoData.armies.forEach(addArmyMarker);
         demoData.events.forEach(addEventMarker);
 
@@ -235,9 +554,17 @@
     function clearMapLayers() {
         pageState.featureLayers = [];
 
-        Object.values(mapLayers).forEach(layer => {
-            layer.clearLayers();
-        });
+        mapLayers.events.clearLayers();
+        mapLayers.controlZones.clearLayers();
+        mapLayers.armies.clearLayers();
+        mapLayers.controlZoneDraft.clearLayers();
+
+        pageState.controlZoneDrawing.coordinates = [];
+        pageState.controlZoneDrawing.pointMarkers = [];
+        pageState.controlZoneDrawing.draftLine = null;
+        pageState.controlZoneDrawing.draftPolygon = null;
+
+        updateDrawingPanel();
     }
 
     function createTemporaryMapData() {
@@ -275,60 +602,39 @@
                     lat: 51.41,
                     lng: 36.39
                 }
-            ],
-            frontLines: [
-                {
-                    id: 1,
-                    title: "Демонстрационная линия фронта",
-                    coordinates: [
-                        [51.95, 35.80],
-                        [51.80, 36.00],
-                        [51.62, 36.18],
-                        [51.42, 36.35],
-                        [51.25, 36.55]
-                    ]
-                }
-            ],
-            controlZones: [
-                {
-                    id: 1,
-                    title: "Зона контроля стороны A",
-                    description: "Временный полигон. Позже будет загружаться из ControlZones.",
-                    side: "A",
-                    coordinates: [
-                        [52.00, 35.70],
-                        [51.95, 36.20],
-                        [51.65, 36.12],
-                        [51.68, 35.65]
-                    ]
-                },
-                {
-                    id: 2,
-                    title: "Зона контроля стороны B",
-                    description: "Временный полигон. Позже будет загружаться из ControlZones.",
-                    side: "B",
-                    coordinates: [
-                        [51.58, 36.22],
-                        [51.35, 36.38],
-                        [51.18, 36.70],
-                        [51.47, 36.85],
-                        [51.70, 36.45]
-                    ]
-                }
             ]
         };
     }
 
     function addEventMarker(event) {
         const marker = L.marker([event.lat, event.lng], { icon: eventIcon })
-            .bindPopup(`
-                <strong>${escapeHtml(event.title)}</strong><br>
-                <span>${escapeHtml(formatDate(event.date))}</span><br>
-                <span>${escapeHtml(event.description)}</span>
-            `);
+            .bindPopup(createEventPopupHtml(event));
 
         marker.addTo(mapLayers.events);
         pageState.featureLayers.push(marker);
+    }
+
+    function createEventPopupHtml(event) {
+        return `
+        <strong>${escapeHtml(event.title)}</strong><br>
+        <span>${escapeHtml(formatDate(event.date))}</span><br>
+        <span>${escapeHtml(event.description)}</span>
+    `;
+    }
+
+    function createArmyPopupHtml(army) {
+        return `
+        <strong>${escapeHtml(army.title)}</strong><br>
+        <span>${escapeHtml(army.description)}</span>
+    `;
+    }
+
+    function createControlZonePopupHtml(zone) {
+        return `
+        <strong>${escapeHtml(zone.title)}</strong><br>
+        <span>${escapeHtml(zone.description)}</span><br>
+        <span>Количество точек: ${zone.coordinates.length}</span>
+    `;
     }
 
     function addArmyMarker(army) {
@@ -342,36 +648,70 @@
         pageState.featureLayers.push(marker);
     }
 
-    function addFrontLine(frontLine) {
-        const line = L.polyline(frontLine.coordinates, {
-            color: "#212529",
-            weight: 4,
-            dashArray: "8 6"
-        }).bindPopup(`<strong>${escapeHtml(frontLine.title)}</strong>`);
-
-        line.addTo(mapLayers.frontLines);
-        pageState.featureLayers.push(line);
-    }
-
     function addControlZone(zone) {
-        const style = zone.side === "A"
-            ? { color: "#0d6efd", fillColor: "#0d6efd", fillOpacity: 0.18, weight: 2 }
-            : { color: "#dc3545", fillColor: "#dc3545", fillOpacity: 0.18, weight: 2 };
+        const style = getControlZoneStyle(zone.side);
 
         const polygon = L.polygon(zone.coordinates, style)
             .bindPopup(`
                 <strong>${escapeHtml(zone.title)}</strong><br>
-                <span>${escapeHtml(zone.description)}</span>
+                <span>${escapeHtml(zone.description)}</span><br>
+                <span>Количество точек: ${zone.coordinates.length}</span>
             `);
 
         polygon.addTo(mapLayers.controlZones);
         pageState.featureLayers.push(polygon);
     }
 
+    function getControlZoneStyle(side) {
+        if (side === "A") {
+            return {
+                color: "#0d6efd",
+                fillColor: "#0d6efd",
+                fillOpacity: 0.18,
+                weight: 2
+            };
+        }
+
+        if (side === "B") {
+            return {
+                color: "#dc3545",
+                fillColor: "#dc3545",
+                fillOpacity: 0.18,
+                weight: 2
+            };
+        }
+
+        return {
+            color: "#198754",
+            fillColor: "#198754",
+            fillOpacity: 0.18,
+            weight: 2
+        };
+    }
+
     function renderObjectsList(demoData) {
+        const items = collectMapObjectItems(demoData);
+
+        elements.objectsList.innerHTML = "";
+
+        if (items.length === 0) {
+            elements.objectsList.textContent = "Объектов пока нет.";
+            elements.objectsList.classList.add("text-secondary");
+            return;
+        }
+
+        elements.objectsList.classList.remove("text-secondary");
+
+        items.forEach(item => {
+            const button = createObjectListButton(item);
+            elements.objectsList.appendChild(button);
+        });
+    }
+
+    function collectMapObjectItems(mapData) {
         const items = [];
 
-        demoData.events.forEach(event => {
+        mapData.events.forEach(event => {
             items.push({
                 type: "Событие",
                 title: event.title,
@@ -379,7 +719,7 @@
             });
         });
 
-        demoData.armies.forEach(army => {
+        mapData.armies.forEach(army => {
             items.push({
                 type: "Соединение",
                 title: army.title,
@@ -387,28 +727,16 @@
             });
         });
 
-        if (items.length === 0) {
-            elements.objectsList.innerHTML = `<div class="text-secondary">Объектов пока нет.</div>`;
-            return;
-        }
-
-        elements.objectsList.innerHTML = "";
-
-        items.forEach(item => {
-            const button = document.createElement("button");
-            button.type = "button";
-            button.className = "list-group-item list-group-item-action object-list-item";
-            button.innerHTML = `
-                <div class="fw-semibold">${escapeHtml(item.title)}</div>
-                <div class="text-secondary">${escapeHtml(item.type)}</div>
-            `;
-
-            button.addEventListener("click", function () {
-                map.setView(item.coordinates, 10);
+        mapData.controlZones.forEach(zone => {
+            items.push({
+                type: "Зона контроля",
+                title: zone.title,
+                coordinates: zone.coordinates[0],
+                bounds: zone.coordinates
             });
-
-            elements.objectsList.appendChild(button);
         });
+
+        return items;
     }
 
     function fitMapToObjects() {
@@ -449,6 +777,27 @@
 
     function isValidCoordinate(value) {
         return value !== null && value !== undefined && value !== "" && !Number.isNaN(Number(value));
+    }
+
+    function createObjectListButton(item) {
+        const button = elements.objectListItemTemplate.content.firstElementChild.cloneNode(true);
+
+        button.querySelector("[data-object-title]").textContent = item.title;
+        button.querySelector("[data-object-type]").textContent = item.type;
+
+        button.addEventListener("click", function () {
+            if (item.bounds && item.bounds.length >= 2) {
+                map.fitBounds(L.latLngBounds(item.bounds), {
+                    padding: [40, 40],
+                    maxZoom: 10
+                });
+                return;
+            }
+
+            map.setView(item.coordinates, 10);
+        });
+
+        return button;
     }
 
     function escapeHtml(value) {
