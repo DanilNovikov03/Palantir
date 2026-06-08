@@ -1,8 +1,8 @@
-﻿import { 
-    escapeHtml, 
-    formatDate, 
-    getQueryParam, 
-    isValidCoordinate 
+﻿import {
+    getQueryParam,
+    formatDate,
+    isValidCoordinate,
+    escapeHtml
 } from "./map-utils.js";
 
 import {
@@ -15,7 +15,9 @@ import {
     saveControlZoneToBackend
 } from "./map-api.js";
 
-import { createTemporaryMapData } from "./map-demo-data.js";
+import {
+    createTemporaryMapData
+} from "./map-demo-data.js";
 
 const DEFAULT_CENTER = [51.75, 36.19];
 const DEFAULT_ZOOM = 7;
@@ -51,6 +53,7 @@ const elements = {
     statusMessage: document.getElementById("statusMessage"),
     objectsList: document.getElementById("objectsList"),
     objectListItemTemplate: document.getElementById("objectListItemTemplate"),
+
     eventsLayerToggle: document.getElementById("eventsLayerToggle"),
     controlZonesLayerToggle: document.getElementById("controlZonesLayerToggle"),
     armiesLayerToggle: document.getElementById("armiesLayerToggle"),
@@ -121,7 +124,7 @@ async function init() {
     setupControlZoneDrawing();
 
     await loadOperation(pageState.operationId);
-    renderTemporaryMapObjects();
+    await renderTemporaryMapObjects();
 }
 
 function setupNavigation() {
@@ -457,13 +460,25 @@ async function renderTemporaryMapObjects() {
 
     const mapData = createTemporaryMapData();
 
-    const warId = getCurrentWarId();
-    const date = getCurrentMapDate();
+    try {
+        const warId = getCurrentWarId();
+        const date = getCurrentMapDate();
 
-    const backendZones = await fetchControlZonesByWarAndDate(warId, date);
-    const zones = backendZones.map(mapBackendControlZoneToFrontendZone);
+        const backendZones = await fetchControlZonesByWarAndDate(warId, date);
+        const zones = backendZones.map(mapBackendControlZoneToFrontendZone);
 
-    mapData.controlZones = zones;
+        mapData.controlZones = zones;
+    } catch (error) {
+        console.error("Не удалось загрузить зоны контроля из БД:", error);
+
+        mapData.controlZones = [];
+
+        setStatus(
+            "Зоны контроля из БД не загрузились. На карте показаны временные тестовые объекты.",
+            "warning"
+        );
+    }
+
     pageState.currentMapData = mapData;
 
     mapData.controlZones.forEach(addControlZone);
