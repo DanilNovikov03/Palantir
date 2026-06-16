@@ -3,8 +3,15 @@
 } from "./map-geometry.js";
 
 export async function fetchOperation(operationId) {
-    const url = `/api/operation/${encodeURIComponent(operationId)}`
+    const url = `/api/operation/${encodeURIComponent(operationId)}`;
+
     const response = await fetch(url);
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Ошибка загрузки операции: ${response.status}. ${errorText}`);
+    }
+
     return await response.json();
 }
 
@@ -21,13 +28,13 @@ export async function fetchControlZonesByWarAndDate(warId, date) {
     return await response.json();
 }
 
-export async function saveControlZoneToBackend(coordinates) {
-    const request = {
-        warId: 1,
-        warSideId: 2,
-        dateControl: "1943-07-05",
-        precisionControl: "Exact",
-        geom: createMultiPolygonGeoJsonFromLeafletCoordinates(coordinates)
+export async function saveControlZoneToBackend(request) {
+    const body = {
+        warId: request.warId,
+        warSideId: request.warSideId,
+        dateControl: request.dateControl,
+        precisionControl: request.precisionControl,
+        geom: createMultiPolygonGeoJsonFromLeafletCoordinates(request.coordinates)
     };
 
     const response = await fetch("/api/control-zones", {
@@ -35,7 +42,7 @@ export async function saveControlZoneToBackend(coordinates) {
         headers: {
             "Content-Type": "application/json"
         },
-        body: JSON.stringify(request)
+        body: JSON.stringify(body)
     });
 
     if (!response.ok) {

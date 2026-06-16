@@ -19,14 +19,36 @@ import {
     createTemporaryMapData
 } from "./map-demo-data.js";
 
+import {
+    SIDE_OPTIONS,
+    getSideById,
+    getSideColor
+} from "./map-side-colors.js";
+
 const DEFAULT_CENTER = [51.75, 36.19];
 const DEFAULT_ZOOM = 7;
+const DEFAULT_MAP_DATE = "1943-07-05";
+const MAP_ACTION_MODES = {
+    CONTROL_ZONE: "control-zone",
+    ARMY: "army",
+    EVENT: "event"
+};
+
+// Пока временно для MVP.
+// Потом лучше сделать выбор стороны конфликта в интерфейсе.
+const DEFAULT_WAR_SIDE_ID = 1;
+const DEFAULT_CONTROL_ZONE_PRECISION = "Approximate";
 
 const pageState = {
     operationId: getQueryParam("operationId"),
+    mapDate: normalizeDate(getQueryParam("date")) ?? DEFAULT_MAP_DATE,
     operation: null,
     featureLayers: [],
     currentMapData: null,
+    activeMode: null,
+    pendingPoint: null,
+    nextTempArmyId: 2000,
+    nextTempEventId: 3000,
 
     controlZoneDrawing: {
         isDrawing: false,
@@ -54,16 +76,36 @@ const elements = {
     objectsList: document.getElementById("objectsList"),
     objectListItemTemplate: document.getElementById("objectListItemTemplate"),
 
+    mapDateInput: document.getElementById("mapDateInput"),
+    applyDateBtn: document.getElementById("applyDateBtn"),
+
     eventsLayerToggle: document.getElementById("eventsLayerToggle"),
     controlZonesLayerToggle: document.getElementById("controlZonesLayerToggle"),
     armiesLayerToggle: document.getElementById("armiesLayerToggle"),
 
-    drawingPanel: null,
-    toggleDrawingBtn: null,
+    actionsPanel: null,
+    addControlZoneModeBtn: null,
+    addArmyModeBtn: null,
+    addEventModeBtn: null,
+    cancelMapActionBtn: null,
+    actionModePanel: null,
+    actionHint: null,
+    controlZoneModeControls: null,
+    controlZoneSideSelect: null,
     finishDrawingBtn: null,
     clearDraftBtn: null,
-    drawingStatus: null,
-    coordinatesOutput: null
+    mapObjectForm: null,
+    mapObjectTitleLabel: null,
+    mapObjectTitleInput: null,
+    mapObjectTypeGroup: null,
+    mapObjectTypeLabel: null,
+    mapObjectTypeInput: null,
+    mapObjectDescriptionGroup: null,
+    mapObjectDescriptionInput: null,
+    mapObjectSideSelect: null,
+    mapObjectCoordinatePreview: null,
+    saveMapObjectBtn: null,
+    cancelMapObjectFormBtn: null
 };
 
 const map = L.map("map", {
@@ -99,28 +141,13 @@ const mapLayers = {
     controlZoneDraft: L.layerGroup().addTo(map)
 };
 
-const eventIcon = L.divIcon({
-    className: "",
-    html: "<div class='event-marker'>!</div>",
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-    popupAnchor: [0, -14]
-});
-
-const armyIcon = L.divIcon({
-    className: "",
-    html: "<div class='army-marker'>A</div>",
-    iconSize: [34, 34],
-    iconAnchor: [17, 17],
-    popupAnchor: [0, -17]
-});
-
 init();
 
 async function init() {
     setupNavigation();
     setupLayerToggles();
     setupFitButton();
+    setupDateFilter();
     setupControlZoneDrawing();
 
     await loadOperation(pageState.operationId);
@@ -146,6 +173,36 @@ function setupFitButton() {
     elements.fitMapBtn.addEventListener("click", fitMapToObjects);
 }
 
+function setupDateFilter() {
+    if (!elements.mapDateInput || !elements.applyDateBtn) {
+        return;
+    }
+
+    elements.mapDateInput.disabled = false;
+    elements.applyDateBtn.disabled = false;
+    elements.mapDateInput.value = getCurrentMapDate();
+
+    elements.applyDateBtn.addEventListener("click", applySelectedDate);
+
+    elements.mapDateInput.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+            applySelectedDate();
+        }
+    });
+}
+
+async function applySelectedDate() {
+    const selectedDate = normalizeDate(elements.mapDateInput?.value);
+
+    if (!selectedDate) {
+        setStatus("Выбери корректную дату для загрузки зон контроля.", "warning");
+        return;
+    }
+
+    setCurrentMapDate(selectedDate, true);
+    await renderTemporaryMapObjects();
+}
+
 function bindLayerToggle(checkbox, layer) {
     if (!checkbox) {
         return;
@@ -161,68 +218,140 @@ function bindLayerToggle(checkbox, layer) {
 }
 
 function setupControlZoneDrawing() {
-    createControlZoneDrawingPanel();
+    createMapActionsPanel();
 
-    elements.toggleDrawingBtn.addEventListener("click", toggleControlZoneDrawingMode);
+    elements.addControlZoneModeBtn.addEventListener("click", () => activateMapMode(MAP_ACTION_MODES.CONTROL_ZONE));
+    elements.addArmyModeBtn.addEventListener("click", () => activateMapMode(MAP_ACTION_MODES.ARMY));
+    elements.addEventModeBtn.addEventListener("click", () => activateMapMode(MAP_ACTION_MODES.EVENT));
+    elements.cancelMapActionBtn.addEventListener("click", cancelActiveMapMode);
     elements.finishDrawingBtn.addEventListener("click", finishControlZoneDrawing);
     elements.clearDraftBtn.addEventListener("click", clearControlZoneDraft);
+    elements.mapObjectForm.addEventListener("submit", saveMapObjectDraft);
+    elements.cancelMapObjectFormBtn.addEventListener("click", clearPendingPointForm);
 
-    map.on("click", handleMapClickForControlZoneDrawing);
+    map.on("click", handleMapClickForActiveMode);
 
-    updateDrawingPanel();
+    updateMapActionsPanel();
 }
 
-function createControlZoneDrawingPanel() {
+function createMapActionsPanel() {
     const wrapper = document.querySelector(".map-container-wrapper") ?? document.body;
 
     if (getComputedStyle(wrapper).position === "static") {
         wrapper.classList.add("map-container-wrapper-relative");
     }
 
-    const template = document.querySelector("#controlZoneDrawingPanelTemplate");
+    const template = document.querySelector("#mapActionsPanelTemplate");
     const panel = template.content.firstElementChild.cloneNode(true);
     wrapper.appendChild(panel);
 
-    // Чтобы карта не реагированал
+    // Чтобы карта не реагировала на клики внутри панели.
     L.DomEvent.disableClickPropagation(panel);
     L.DomEvent.disableScrollPropagation(panel);
 
-    elements.drawingPanel = panel;
-    elements.toggleDrawingBtn = panel.querySelector("#toggleControlZoneDrawingBtn");
+    elements.actionsPanel = panel;
+    elements.addControlZoneModeBtn = panel.querySelector("#addControlZoneModeBtn");
+    elements.addArmyModeBtn = panel.querySelector("#addArmyModeBtn");
+    elements.addEventModeBtn = panel.querySelector("#addEventModeBtn");
+    elements.cancelMapActionBtn = panel.querySelector("#cancelMapActionBtn");
+    elements.actionModePanel = panel.querySelector("#mapActionModePanel");
+    elements.actionHint = panel.querySelector("#mapActionHint");
+    elements.controlZoneModeControls = panel.querySelector("#controlZoneModeControls");
+    elements.controlZoneSideSelect = panel.querySelector("#controlZoneSideSelect");
     elements.finishDrawingBtn = panel.querySelector("#finishControlZoneDrawingBtn");
     elements.clearDraftBtn = panel.querySelector("#clearControlZoneDraftBtn");
-    elements.drawingStatus = panel.querySelector("#controlZoneDrawingStatus");
-    elements.coordinatesOutput = panel.querySelector("#controlZoneCoordinatesOutput");
+    elements.mapObjectForm = panel.querySelector("#mapObjectForm");
+    elements.mapObjectTitleLabel = panel.querySelector("#mapObjectTitleLabel");
+    elements.mapObjectTitleInput = panel.querySelector("#mapObjectTitleInput");
+    elements.mapObjectTypeGroup = panel.querySelector("#mapObjectTypeGroup");
+    elements.mapObjectTypeLabel = panel.querySelector("#mapObjectTypeLabel");
+    elements.mapObjectTypeInput = panel.querySelector("#mapObjectTypeInput");
+    elements.mapObjectDescriptionGroup = panel.querySelector("#mapObjectDescriptionGroup");
+    elements.mapObjectDescriptionInput = panel.querySelector("#mapObjectDescriptionInput");
+    elements.mapObjectSideSelect = panel.querySelector("#mapObjectSideSelect");
+    elements.mapObjectCoordinatePreview = panel.querySelector("#mapObjectCoordinatePreview");
+    elements.saveMapObjectBtn = panel.querySelector("#saveMapObjectBtn");
+    elements.cancelMapObjectFormBtn = panel.querySelector("#cancelMapObjectFormBtn");
+
+    fillSideSelect(elements.controlZoneSideSelect);
+    fillSideSelect(elements.mapObjectSideSelect);
 }
 
-function toggleControlZoneDrawingMode() {
-    if (pageState.controlZoneDrawing.isDrawing) {
-        stopControlZoneDrawingMode();
-    } else {
-        startControlZoneDrawingMode();
+function fillSideSelect(select) {
+    if (!select) {
+        return;
     }
 
-    updateDrawingPanel();
+    select.innerHTML = "";
+
+    SIDE_OPTIONS.forEach(side => {
+        const option = document.createElement("option");
+        option.value = String(side.id);
+        option.textContent = side.title;
+        select.appendChild(option);
+    });
+
+    select.value = String(DEFAULT_WAR_SIDE_ID);
 }
 
-function startControlZoneDrawingMode() {
-    pageState.controlZoneDrawing.isDrawing = true;
-    map.getContainer().style.cursor = "crosshair";
+function activateMapMode(mode) {
+    if (pageState.activeMode === mode) {
+        cancelActiveMapMode();
+        return;
+    }
 
-    setStatus(
-        "Режим создания зоны контроля включён. Нажимай по карте, чтобы добавлять точки полигона.",
-        "info"
-    );
+    clearTransientEditingState();
+    pageState.activeMode = mode;
+
+    if (mode === MAP_ACTION_MODES.CONTROL_ZONE) {
+        pageState.controlZoneDrawing.isDrawing = true;
+        map.getContainer().style.cursor = "crosshair";
+        setStatus("Выберите точки зоны контроля. Минимум нужно 3 точки.", "info");
+    }
+
+    if (mode === MAP_ACTION_MODES.ARMY) {
+        map.getContainer().style.cursor = "crosshair";
+        setStatus("Выберите точку для размещения армии.", "info");
+    }
+
+    if (mode === MAP_ACTION_MODES.EVENT) {
+        map.getContainer().style.cursor = "crosshair";
+        setStatus("Выберите точку для события.", "info");
+    }
+
+    updateMapActionsPanel();
 }
 
-function stopControlZoneDrawingMode() {
-    pageState.controlZoneDrawing.isDrawing = false;
+function cancelActiveMapMode() {
+    clearTransientEditingState();
+    pageState.activeMode = null;
     map.getContainer().style.cursor = "";
 
-    setStatus(
-        "Режим создания зоны контроля выключен. Уже поставленные точки черновика сохранены на фронте.",
-        "secondary"
-    );
+    setStatus("Режим добавления объекта отменён.", "secondary");
+    updateMapActionsPanel();
+}
+
+function clearTransientEditingState() {
+    pageState.controlZoneDrawing.isDrawing = false;
+    pageState.pendingPoint = null;
+    clearControlZoneDraft(false);
+    hideMapObjectForm();
+}
+
+function handleMapClickForActiveMode(event) {
+    if (pageState.activeMode === MAP_ACTION_MODES.CONTROL_ZONE) {
+        handleMapClickForControlZoneDrawing(event);
+        return;
+    }
+
+    if (pageState.activeMode === MAP_ACTION_MODES.ARMY) {
+        preparePointObjectForm(event, MAP_ACTION_MODES.ARMY);
+        return;
+    }
+
+    if (pageState.activeMode === MAP_ACTION_MODES.EVENT) {
+        preparePointObjectForm(event, MAP_ACTION_MODES.EVENT);
+    }
 }
 
 function handleMapClickForControlZoneDrawing(event) {
@@ -251,7 +380,7 @@ function handleMapClickForControlZoneDrawing(event) {
     pageState.controlZoneDrawing.pointMarkers.push(marker);
 
     redrawControlZoneDraft();
-    updateDrawingPanel();
+    updateMapActionsPanel();
 }
 
 function redrawControlZoneDraft() {
@@ -305,14 +434,20 @@ async function finishControlZoneDrawing() {
     try {
         setStatus("Сохраняю зону контроля в базу данных...", "info");
 
-        await saveControlZoneToBackend(drawing.coordinates);
+        const request = createControlZoneSaveRequest(drawing.coordinates);
+
+        await saveControlZoneToBackend(request);
 
         const newZone = {
             id: drawing.nextTempZoneId,
             title: `Новая зона контроля #${drawing.nextTempZoneId}`,
-            description: "Зона создана и отправлена на backend.",
-            side: "Draft",
-            coordinates: drawing.coordinates.map(point => [...point])
+            description: `Зона создана и отправлена на backend. Дата: ${formatDate(request.dateControl)}.`,
+            side: String(request.warSideId),
+            warId: request.warId,
+            warSideId: request.warSideId,
+            dateControl: request.dateControl,
+            precisionControl: request.precisionControl,
+            coordinates: request.coordinates.map(point => [...point])
         };
 
         drawing.nextTempZoneId += 1;
@@ -325,14 +460,29 @@ async function finishControlZoneDrawing() {
         }
 
         await renderTemporaryMapObjects();
-        clearControlZoneDraft();
+        clearControlZoneDraft(false);
+        pageState.activeMode = null;
+        pageState.controlZoneDrawing.isDrawing = false;
+        map.getContainer().style.cursor = "";
+        updateMapActionsPanel();
 
         setStatus("Зона контроля сохранена в БД и карта обновлена.", "success");
-
     } catch (error) {
         console.error(error);
         setStatus("Не удалось сохранить зону контроля в базу данных.", "danger");
     }
+}
+
+function createControlZoneSaveRequest(coordinates) {
+    const selectedSideId = Number(elements.controlZoneSideSelect?.value) || DEFAULT_WAR_SIDE_ID;
+
+    return {
+        warId: getCurrentWarId(),
+        warSideId: selectedSideId,
+        dateControl: getCurrentMapDate(),
+        precisionControl: DEFAULT_CONTROL_ZONE_PRECISION,
+        coordinates: coordinates.map(point => [...point])
+    };
 }
 
 function mapBackendControlZoneToFrontendZone(zone) {
@@ -340,25 +490,201 @@ function mapBackendControlZoneToFrontendZone(zone) {
         id: zone.id,
         title: `Зона контроля #${zone.id}`,
         description: `Дата: ${formatDate(zone.dateControl)}. Точность: ${zone.precisionControl}`,
-        side: String(zone.warSideId),
+        side: String(zone.side ?? zone.warSideId ?? ""),
         warId: zone.warId,
         warSideId: zone.warSideId,
         dateControl: zone.dateControl,
         precisionControl: zone.precisionControl,
-        coordinates: convertGeoJsonMultiPolygonToLeafletCoordinates(zone.geom)
+        coordinates: getLeafletCoordinatesFromBackendZone(zone)
     };
 }
 
-// Временно
+// Временно: если у операции ещё нет warId, оставляем 1 для MVP.
 function getCurrentWarId() {
     return pageState.operation?.warId ?? 1;
 }
 
 function getCurrentMapDate() {
-    return "1943-07-05";
+    return pageState.mapDate ?? DEFAULT_MAP_DATE;
 }
 
-function clearControlZoneDraft() {
+function setCurrentMapDate(date, updateUrl = false) {
+    const normalizedDate = normalizeDate(date) ?? DEFAULT_MAP_DATE;
+    pageState.mapDate = normalizedDate;
+
+    if (elements.mapDateInput) {
+        elements.mapDateInput.value = normalizedDate;
+    }
+
+    if (updateUrl) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("date", normalizedDate);
+        window.history.replaceState({}, "", url);
+    }
+}
+
+function normalizeDate(value) {
+    if (!value) {
+        return null;
+    }
+
+    const date = String(value).trim().slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+}
+
+function setMapDateFromOperation(operation) {
+    if (getQueryParam("date")) {
+        setCurrentMapDate(getCurrentMapDate(), false);
+        return;
+    }
+
+    const operationStartDate = normalizeDate(operation?.startDate);
+
+    if (operationStartDate) {
+        setCurrentMapDate(operationStartDate, false);
+    }
+}
+
+function getLeafletCoordinatesFromBackendZone(zone) {
+    const geometry = zone.geom ?? zone.geometry ?? zone.geoJson;
+
+    if (geometry) {
+        return convertBackendGeometryToLeafletCoordinates(geometry);
+    }
+
+    if (Array.isArray(zone.coordinates)) {
+        return normalizeBackendCoordinatesArray(zone.coordinates);
+    }
+
+    return [];
+}
+
+function convertBackendGeometryToLeafletCoordinates(geometry) {
+    const parsedGeometry = typeof geometry === "string"
+        ? tryParseJson(geometry)
+        : geometry;
+
+    if (!parsedGeometry) {
+        return [];
+    }
+
+    const geometryObject = parsedGeometry.type === "Feature"
+        ? parsedGeometry.geometry
+        : parsedGeometry;
+
+    if (geometryObject?.type === "Polygon") {
+        return convertGeoJsonPolygonToLeafletCoordinates(geometryObject);
+    }
+
+    if (geometryObject?.type === "MultiPolygon") {
+        return convertGeoJsonMultiPolygonToLeafletCoordinates(geometryObject);
+    }
+
+    return [];
+}
+
+function normalizeBackendCoordinatesArray(coordinates) {
+    // Вариант 1: backend вернул уже Leaflet-координаты:
+    // [[lat, lng], [lat, lng], ...]
+    if (isLeafletPointArray(coordinates)) {
+        return coordinates;
+    }
+
+    // Вариант 2: backend вернул GeoJSON Polygon coordinates:
+    // [[[lng, lat], [lng, lat], ...]]
+    if (Array.isArray(coordinates[0]) && isGeoJsonPointArray(coordinates[0])) {
+        return coordinates[0].map(([lng, lat]) => [lat, lng]);
+    }
+
+    // Вариант 3: backend вернул GeoJSON MultiPolygon coordinates:
+    // [[[[lng, lat], [lng, lat], ...]]]
+    if (
+        Array.isArray(coordinates[0]) &&
+        Array.isArray(coordinates[0][0]) &&
+        isGeoJsonPointArray(coordinates[0][0])
+    ) {
+        return coordinates[0][0].map(([lng, lat]) => [lat, lng]);
+    }
+
+    return [];
+}
+
+function isLeafletPointArray(value) {
+    return Array.isArray(value)
+        && value.length > 0
+        && Array.isArray(value[0])
+        && typeof value[0][0] === "number"
+        && typeof value[0][1] === "number";
+}
+
+function isGeoJsonPointArray(value) {
+    return Array.isArray(value)
+        && value.length > 0
+        && Array.isArray(value[0])
+        && typeof value[0][0] === "number"
+        && typeof value[0][1] === "number";
+}
+
+function convertGeoJsonPolygonToLeafletCoordinates(geometry) {
+    const exteriorRing = geometry.coordinates?.[0] ?? [];
+
+    return exteriorRing.map(function (position) {
+        const lng = position[0];
+        const lat = position[1];
+        return [lat, lng];
+    });
+}
+
+function tryParseJson(value) {
+    try {
+        return JSON.parse(value);
+    } catch {
+        return null;
+    }
+}
+
+function isValidControlZone(zone) {
+    return Array.isArray(zone.coordinates) && zone.coordinates.length > 0;
+}
+
+function preparePointObjectForm(event, mode) {
+    const lat = Number(event.latlng.lat.toFixed(6));
+    const lng = Number(event.latlng.lng.toFixed(6));
+
+    pageState.pendingPoint = { lat, lng, mode };
+
+    elements.mapObjectForm.hidden = false;
+    elements.controlZoneModeControls.hidden = true;
+    elements.mapObjectForm.reset();
+    elements.mapObjectSideSelect.value = String(DEFAULT_WAR_SIDE_ID);
+    elements.mapObjectCoordinatePreview.textContent = `Координата: ${lat}, ${lng}`;
+
+    if (mode === MAP_ACTION_MODES.ARMY) {
+        elements.mapObjectTitleLabel.textContent = "Название армии";
+        elements.mapObjectTitleInput.placeholder = "Например: 5-я гвардейская армия";
+        elements.mapObjectTypeGroup.hidden = false;
+        elements.mapObjectTypeLabel.textContent = "Тип армии";
+        elements.mapObjectTypeInput.placeholder = "армия, корпус";
+        elements.mapObjectDescriptionGroup.hidden = true;
+        elements.saveMapObjectBtn.textContent = "Сохранить армию";
+        setStatus("Заполните данные армии. Позиция будет связана с выбранной датой карты.", "info");
+    }
+
+    if (mode === MAP_ACTION_MODES.EVENT) {
+        elements.mapObjectTitleLabel.textContent = "Название события";
+        elements.mapObjectTitleInput.placeholder = "Например: Начало наступления";
+        elements.mapObjectTypeGroup.hidden = false;
+        elements.mapObjectTypeLabel.textContent = "Тип события";
+        elements.mapObjectTypeInput.placeholder = "бой, наступление, перегруппировка";
+        elements.mapObjectDescriptionGroup.hidden = false;
+        elements.saveMapObjectBtn.textContent = "Сохранить событие";
+        setStatus("Заполните данные события. До подключения API оно будет добавлено на карту как локальная запись.", "info");
+    }
+
+    updateMapActionsPanel();
+}
+
+function clearControlZoneDraft(updatePanel = true) {
     const drawing = pageState.controlZoneDrawing;
 
     drawing.coordinates = [];
@@ -368,32 +694,185 @@ function clearControlZoneDraft() {
 
     mapLayers.controlZoneDraft.clearLayers();
 
-    updateDrawingPanel();
+    if (updatePanel) {
+        pageState.activeMode = null;
+        pageState.controlZoneDrawing.isDrawing = false;
+        map.getContainer().style.cursor = "";
+        setStatus("Рисование зоны контроля отменено.", "secondary");
+        updateMapActionsPanel();
+    }
 }
 
-function updateDrawingPanel() {
+function updateMapActionsPanel() {
     const drawing = pageState.controlZoneDrawing;
 
-    if (!elements.toggleDrawingBtn) {
+    if (!elements.actionsPanel) {
         return;
     }
 
-    elements.toggleDrawingBtn.textContent = drawing.isDrawing
-        ? "Остановить рисование"
-        : "Добавить зону контроля";
-
-    elements.toggleDrawingBtn.className = drawing.isDrawing
-        ? "btn btn-warning btn-sm"
-        : "btn btn-success btn-sm";
-
+    const hasActiveMode = Boolean(pageState.activeMode);
+    elements.actionModePanel.hidden = !hasActiveMode;
+    elements.cancelMapActionBtn.hidden = !hasActiveMode;
+    elements.controlZoneModeControls.hidden = pageState.activeMode !== MAP_ACTION_MODES.CONTROL_ZONE;
     elements.finishDrawingBtn.disabled = drawing.coordinates.length < 3;
     elements.clearDraftBtn.disabled = drawing.coordinates.length === 0;
 
-    elements.drawingStatus.textContent = drawing.isDrawing
-        ? `Режим рисования включён. Точек: ${drawing.coordinates.length}.`
-        : `Режим рисования выключен. Точек в черновике: ${drawing.coordinates.length}.`;
+    elements.addControlZoneModeBtn.classList.toggle("is-active", pageState.activeMode === MAP_ACTION_MODES.CONTROL_ZONE);
+    elements.addArmyModeBtn.classList.toggle("is-active", pageState.activeMode === MAP_ACTION_MODES.ARMY);
+    elements.addEventModeBtn.classList.toggle("is-active", pageState.activeMode === MAP_ACTION_MODES.EVENT);
 
-    elements.coordinatesOutput.textContent = JSON.stringify(drawing.coordinates, null, 2);
+    if (pageState.activeMode === MAP_ACTION_MODES.CONTROL_ZONE) {
+        elements.actionHint.textContent = `Выберите точки зоны контроля. Точек: ${drawing.coordinates.length}.`;
+        elements.mapObjectForm.hidden = true;
+        return;
+    }
+
+    if (pageState.activeMode === MAP_ACTION_MODES.ARMY) {
+        elements.actionHint.textContent = pageState.pendingPoint
+            ? "Заполните данные армии."
+            : "Выберите точку для размещения армии.";
+        return;
+    }
+
+    if (pageState.activeMode === MAP_ACTION_MODES.EVENT) {
+        elements.actionHint.textContent = pageState.pendingPoint
+            ? "Заполните данные события."
+            : "Выберите точку для события.";
+    }
+}
+
+function hideMapObjectForm() {
+    if (!elements.mapObjectForm) {
+        return;
+    }
+
+    elements.mapObjectForm.hidden = true;
+    elements.mapObjectForm.reset();
+    elements.mapObjectCoordinatePreview.textContent = "";
+}
+
+function clearPendingPointForm() {
+    pageState.pendingPoint = null;
+    hideMapObjectForm();
+    updateMapActionsPanel();
+
+    if (pageState.activeMode === MAP_ACTION_MODES.ARMY) {
+        setStatus("Выберите точку для размещения армии.", "info");
+    }
+
+    if (pageState.activeMode === MAP_ACTION_MODES.EVENT) {
+        setStatus("Выберите точку для события.", "info");
+    }
+}
+
+function saveMapObjectDraft(event) {
+    event.preventDefault();
+
+    if (!pageState.pendingPoint) {
+        setStatus("Сначала выберите точку на карте.", "warning");
+        return;
+    }
+
+    if (pageState.pendingPoint.mode === MAP_ACTION_MODES.ARMY) {
+        saveArmyDraft();
+        return;
+    }
+
+    if (pageState.pendingPoint.mode === MAP_ACTION_MODES.EVENT) {
+        saveEventDraft();
+    }
+}
+
+function saveArmyDraft() {
+    ensureCurrentMapData();
+
+    const sideId = Number(elements.mapObjectSideSelect.value) || DEFAULT_WAR_SIDE_ID;
+    const side = getSideById(sideId);
+    const type = elements.mapObjectTypeInput.value.trim() || "армия";
+    const title = elements.mapObjectTitleInput.value.trim() || `Армия #${pageState.nextTempArmyId}`;
+    const markerLetter = getArmyMarkerLetter(type);
+
+    const army = {
+        id: pageState.nextTempArmyId,
+        title,
+        type,
+        side,
+        warSideId: sideId,
+        date: getCurrentMapDate(),
+        description: `Тип: ${type}. Сторона: ${side?.title ?? sideId}. Дата: ${formatDate(getCurrentMapDate())}.`,
+        lat: pageState.pendingPoint.lat,
+        lng: pageState.pendingPoint.lng,
+        markerLetter
+    };
+
+    pageState.nextTempArmyId += 1;
+    pageState.currentMapData.armies.push(army);
+    addArmyMarker(army);
+    renderObjectsList(pageState.currentMapData);
+    completePointObjectMode("Армия добавлена на карту как локальная MVP-запись.");
+}
+
+function saveEventDraft() {
+    ensureCurrentMapData();
+
+    const sideId = Number(elements.mapObjectSideSelect.value) || DEFAULT_WAR_SIDE_ID;
+    const side = getSideById(sideId);
+    const title = elements.mapObjectTitleInput.value.trim() || `Событие #${pageState.nextTempEventId}`;
+    const type = elements.mapObjectTypeInput.value.trim();
+    const text = elements.mapObjectDescriptionInput.value.trim();
+
+    const mapEvent = {
+        id: pageState.nextTempEventId,
+        title,
+        type,
+        side,
+        warSideId: sideId,
+        date: getCurrentMapDate(),
+        description: text || "Локальная запись события до подключения API.",
+        lat: pageState.pendingPoint.lat,
+        lng: pageState.pendingPoint.lng
+    };
+
+    pageState.nextTempEventId += 1;
+    pageState.currentMapData.events.push(mapEvent);
+    addEventMarker(mapEvent);
+    renderObjectsList(pageState.currentMapData);
+    completePointObjectMode("Событие добавлено на карту как локальная MVP-запись.");
+}
+
+function completePointObjectMode(message) {
+    pageState.pendingPoint = null;
+    pageState.activeMode = null;
+    map.getContainer().style.cursor = "";
+    hideMapObjectForm();
+    updateMapActionsPanel();
+    setStatus(message, "success");
+}
+
+function ensureCurrentMapData() {
+    if (pageState.currentMapData) {
+        return;
+    }
+
+    pageState.currentMapData = {
+        events: [],
+        armies: [],
+        controlZones: []
+    };
+}
+
+function getArmyMarkerLetter(type) {
+    const normalizedType = String(type ?? "").trim().toLowerCase();
+
+    if (normalizedType.includes("корпус")) {
+        return "К";
+    }
+
+    if (normalizedType.includes("арм")) {
+        return "А";
+    }
+
+    return "В";
 }
 
 async function loadOperation(operationId) {
@@ -404,16 +883,17 @@ async function loadOperation(operationId) {
         pageState.operation = operation;
 
         renderOperationInfo(operation);
+        setMapDateFromOperation(operation);
         setMapCenterFromOperation(operation);
-        setStatus("Данные операции загружены. На карте пока показаны временные демонстрационные объекты.", "success");
+
+        setStatus("Данные операции загружены. Загружаю объекты карты...", "success");
     } catch (error) {
         console.error(error);
         renderOperationInfo(null);
-        setStatus("Не удалось загрузить операцию через API. Карта всё равно открыта с тестовыми объектами.", "warning");
+
+        setStatus("Не удалось загрузить операцию через API. Карта всё равно открыта.", "warning");
     }
 }
-
-
 
 function renderOperationInfo(operation) {
     if (!operation) {
@@ -465,16 +945,35 @@ async function renderTemporaryMapObjects() {
         const date = getCurrentMapDate();
 
         const backendZones = await fetchControlZonesByWarAndDate(warId, date);
-        const zones = backendZones.map(mapBackendControlZoneToFrontendZone);
+
+        if (!Array.isArray(backendZones)) {
+            throw new Error("API зон контроля вернул не массив.");
+        }
+
+        const zones = backendZones
+            .map(mapBackendControlZoneToFrontendZone)
+            .filter(isValidControlZone);
 
         mapData.controlZones = zones;
+
+        if (zones.length === 0) {
+            setStatus(
+                `Данные из БД загружены, но на ${formatDate(date)} зон контроля нет. Выбери другую дату или создай новую зону.`,
+                "secondary"
+            );
+        } else {
+            setStatus(
+                `Зоны контроля из БД загружены: ${zones.length}. Дата: ${formatDate(date)}.`,
+                "success"
+            );
+        }
     } catch (error) {
         console.error("Не удалось загрузить зоны контроля из БД:", error);
 
         mapData.controlZones = [];
 
         setStatus(
-            "Зоны контроля из БД не загрузились. На карте показаны временные тестовые объекты.",
+            "Не удалось получить зоны контроля из БД. Проверь API, параметры warId/date и наличие данных в таблице ControlZones.",
             "warning"
         );
     }
@@ -502,11 +1001,13 @@ function clearMapLayers() {
     pageState.controlZoneDrawing.draftLine = null;
     pageState.controlZoneDrawing.draftPolygon = null;
 
-    updateDrawingPanel();
+    updateMapActionsPanel();
 }
 
 function addEventMarker(event) {
-    const marker = L.marker([event.lat, event.lng], { icon: eventIcon })
+    const marker = L.marker([event.lat, event.lng], {
+        icon: createEventIcon(event)
+    })
         .bindPopup(createEventPopupHtml(event));
 
     marker.addTo(mapLayers.events);
@@ -515,33 +1016,32 @@ function addEventMarker(event) {
 
 function createEventPopupHtml(event) {
     return `
-    <strong>${escapeHtml(event.title)}</strong><br>
-    <span>${escapeHtml(formatDate(event.date))}</span><br>
-    <span>${escapeHtml(event.description)}</span>
-`;
+        <strong>${escapeHtml(event.title)}</strong><br>
+        <span>${escapeHtml(formatDate(event.date))}</span><br>
+        <span>${escapeHtml(event.description)}</span>
+    `;
 }
 
 function createArmyPopupHtml(army) {
     return `
-    <strong>${escapeHtml(army.title)}</strong><br>
-    <span>${escapeHtml(army.description)}</span>
-`;
+        <strong>${escapeHtml(army.title)}</strong><br>
+        <span>${escapeHtml(army.description)}</span>
+    `;
 }
 
 function createControlZonePopupHtml(zone) {
     return `
-    <strong>${escapeHtml(zone.title)}</strong><br>
-    <span>${escapeHtml(zone.description)}</span><br>
-    <span>Количество точек: ${zone.coordinates.length}</span>
-`;
+        <strong>${escapeHtml(zone.title)}</strong><br>
+        <span>${escapeHtml(zone.description)}</span><br>
+        <span>Количество точек: ${zone.coordinates.length}</span>
+    `;
 }
 
 function addArmyMarker(army) {
-    const marker = L.marker([army.lat, army.lng], { icon: armyIcon })
-        .bindPopup(`
-            <strong>${escapeHtml(army.title)}</strong><br>
-            <span>${escapeHtml(army.description)}</span>
-        `);
+    const marker = L.marker([army.lat, army.lng], {
+        icon: createArmyIcon(army)
+    })
+        .bindPopup(createArmyPopupHtml(army));
 
     marker.addTo(mapLayers.armies);
     pageState.featureLayers.push(marker);
@@ -551,41 +1051,60 @@ function addControlZone(zone) {
     const style = getControlZoneStyle(zone.side);
 
     const polygon = L.polygon(zone.coordinates, style)
-        .bindPopup(`
-            <strong>${escapeHtml(zone.title)}</strong><br>
-            <span>${escapeHtml(zone.description)}</span><br>
-            <span>Количество точек: ${zone.coordinates.length}</span>
-        `);
+        .bindPopup(createControlZonePopupHtml(zone));
 
     polygon.addTo(mapLayers.controlZones);
     pageState.featureLayers.push(polygon);
 }
 
 function getControlZoneStyle(side) {
-    if (side === "A") {
-        return {
-            color: "#0d6efd",
-            fillColor: "#0d6efd",
-            fillOpacity: 0.18,
-            weight: 2
-        };
-    }
-
-    if (side === "B") {
-        return {
-            color: "#dc3545",
-            fillColor: "#dc3545",
-            fillOpacity: 0.18,
-            weight: 2
-        };
-    }
+    const color = getSideColor(resolveSideValue(side));
 
     return {
-        color: "#198754",
-        fillColor: "#198754",
-        fillOpacity: 0.18,
+        color,
+        fillColor: color,
+        fillOpacity: 0.25,
+        opacity: 0.8,
         weight: 2
     };
+}
+
+function createArmyIcon(army) {
+    const color = getSideColor(resolveSideValue(army.side ?? army.warSideId));
+    const letter = army.markerLetter ?? getArmyMarkerLetter(army.type ?? army.title);
+
+    return L.divIcon({
+        className: "",
+        html: `<div class="army-marker" style="border-color: ${color}; color: ${color};">${escapeHtml(letter)}</div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
+        popupAnchor: [0, -17]
+    });
+}
+
+function createEventIcon(event) {
+    const color = getSideColor(resolveSideValue(event.side ?? event.warSideId));
+
+    return L.divIcon({
+        className: "",
+        html: `<div class="event-marker" style="background: ${color};">${escapeHtml(event.markerLetter ?? "!")}</div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        popupAnchor: [0, -14]
+    });
+}
+
+function resolveSideValue(side) {
+    if (typeof side === "number") {
+        return getSideById(side) ?? { id: side };
+    }
+
+    if (typeof side === "string" && /^\d+$/.test(side)) {
+        const sideId = Number(side);
+        return getSideById(sideId) ?? { id: sideId };
+    }
+
+    return side;
 }
 
 function renderObjectsList(demoData) {
@@ -654,7 +1173,7 @@ function fitMapToObjects() {
 function setStatus(message, type) {
     elements.statusMessage.className = `alert alert-${type} py-2 small`;
     elements.statusMessage.textContent = message;
-}    
+}
 
 function createObjectListButton(item) {
     const button = elements.objectListItemTemplate.content.firstElementChild.cloneNode(true);

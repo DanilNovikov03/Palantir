@@ -18,7 +18,16 @@
                 NotFound() : Ok(zone);
         }
 
-        [HttpGet("{warId:int}/{date:datetime}")]
+        [HttpGet("by-war-date")]
+        public async Task<ActionResult<List<ControlZoneResponse>>>
+            GetByWarDateQueryAsync([FromQuery] int warId, [FromQuery] DateOnly date)
+        {
+            var zones = await _zoneService.GetByWarDateAsync(warId, date);
+
+            return Ok(zones);
+        }
+
+        [HttpGet("{warId:int}/{date}")]
         public async Task<ActionResult<List<ControlZoneResponse>>>
             GetByWarDateAsync(int warId, DateOnly date)
         {

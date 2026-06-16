@@ -16,7 +16,7 @@ namespace Palantir.Infrastructure.Repositories
             await _dbContext.control_zones
                 .Where(zone => 
                     zone.war_id == warId &&
-                    zone.date_control == date)
+                    zone.date_control <= date)
                 .ToListAsync();
 
         public async Task<List<ControlZone>> GetByWarSideDateAsync(int warId, int warSideId, DateOnly date) =>
@@ -24,7 +24,7 @@ namespace Palantir.Infrastructure.Repositories
                 .Where(zone =>
                     zone.war_id == warId &&
                     zone.war_side_id == warSideId &&
-                    zone.date_control == date)
+                    zone.date_control <= date)
                 .ToListAsync();
 
         public async Task AddAsync(ControlZone controlZone)
