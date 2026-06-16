@@ -12,7 +12,12 @@ import {
 import {
     fetchOperation,
     fetchControlZonesByWarAndDate,
-    saveControlZoneToBackend
+    fetchArmiesByWarAndDate,
+    saveControlZoneToBackend,
+    saveArmyToBackend,
+    updateArmyPositionOnBackend,
+    updateEventPositionOnBackend,
+    deleteMapObjectFromBackend
 } from "./map-api.js";
 
 import {
@@ -31,7 +36,9 @@ const DEFAULT_MAP_DATE = "1943-07-05";
 const MAP_ACTION_MODES = {
     CONTROL_ZONE: "control-zone",
     ARMY: "army",
-    EVENT: "event"
+    EVENT: "event",
+    MOVE_ARMY: "move-army",
+    MOVE_EVENT: "move-event"
 };
 
 // Пока временно для MVP.
@@ -47,6 +54,7 @@ const pageState = {
     currentMapData: null,
     activeMode: null,
     pendingPoint: null,
+    movingObject: null,
     nextTempArmyId: 2000,
     nextTempEventId: 3000,
 
@@ -149,6 +157,7 @@ async function init() {
     setupFitButton();
     setupDateFilter();
     setupControlZoneDrawing();
+    setupMapObjectPopupActions();
 
     await loadOperation(pageState.operationId);
     await renderTemporaryMapObjects();
@@ -232,6 +241,149 @@ function setupControlZoneDrawing() {
     map.on("click", handleMapClickForActiveMode);
 
     updateMapActionsPanel();
+}
+
+function setupMapObjectPopupActions() {
+    document.addEventListener("click", async function (event) {
+        const deleteButton = event.target.closest("[data-delete-map-object]");
+
+        if (deleteButton) {
+            const objectType = deleteButton.dataset.objectType;
+            const objectId = Number(deleteButton.dataset.objectId);
+
+            if (!objectType || !Number.isInteger(objectId)) {
+                setStatus("Не удалось определить объект для удаления.", "warning");
+                return;
+            }
+
+            await deleteMapObject(objectType, objectId);
+            return;
+        }
+
+        const moveButton = event.target.closest("[data-move-map-object]");
+
+        if (!moveButton) {
+            return;
+        }
+
+        const objectType = moveButton.dataset.objectType;
+        const objectId = Number(moveButton.dataset.objectId);
+
+        if (!objectType || !Number.isInteger(objectId)) {
+            setStatus("Не удалось определить объект для перемещения.", "warning");
+            return;
+        }
+
+        startMoveMapObjectMode(objectType, objectId);
+    });
+}
+
+async function deleteMapObject(objectType, objectId) {
+    const confirmed = window.confirm("Вы действительно хотите удалить этот объект?");
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        const result = await deleteMapObjectFromBackend(objectType, objectId);
+
+        removeMapObjectFromCurrentData(objectType, objectId);
+        redrawCurrentMapData();
+
+        const message = result.deletedOnServer
+            ? "Объект удалён из БД и убран с карты."
+            : "Объект удалён с карты. API удаления для этого типа пока не реализован.";
+
+        setStatus(message, result.deletedOnServer ? "success" : "secondary");
+    } catch (error) {
+        console.error(error);
+        setStatus("Не удалось удалить объект. Проверь API удаления и идентификатор объекта.", "danger");
+    }
+}
+
+function startMoveMapObjectMode(objectType, objectId) {
+    const object = findMapObject(objectType, objectId);
+
+    if (!object) {
+        setStatus("Объект для перемещения не найден на карте.", "warning");
+        return;
+    }
+
+    clearTransientEditingState();
+    map.closePopup();
+    pageState.movingObject = { objectType, objectId };
+
+    if (objectType === "army") {
+        pageState.activeMode = MAP_ACTION_MODES.MOVE_ARMY;
+        setStatus("Выберите новую позицию армии на карте.", "info");
+    } else if (objectType === "event") {
+        pageState.activeMode = MAP_ACTION_MODES.MOVE_EVENT;
+        setStatus("Выберите новую позицию события на карте.", "info");
+    } else {
+        pageState.movingObject = null;
+        setStatus("Этот тип объекта нельзя перемещать.", "warning");
+        return;
+    }
+
+    map.getContainer().classList.add("map-move-mode");
+    map.getContainer().style.cursor = "crosshair";
+    updateMapActionsPanel();
+}
+
+function findMapObject(objectType, objectId) {
+    ensureCurrentMapData();
+
+    if (objectType === "army") {
+        return pageState.currentMapData.armies
+            .find(army => army.id === objectId) ?? null;
+    }
+
+    if (objectType === "event") {
+        return pageState.currentMapData.events
+            .find(mapEvent => mapEvent.id === objectId) ?? null;
+    }
+
+    if (objectType === "controlZone") {
+        return pageState.currentMapData.controlZones
+            .find(zone => zone.id === objectId) ?? null;
+    }
+
+    return null;
+}
+
+function removeMapObjectFromCurrentData(objectType, objectId) {
+    ensureCurrentMapData();
+
+    if (objectType === "controlZone") {
+        pageState.currentMapData.controlZones = pageState.currentMapData.controlZones
+            .filter(zone => zone.id !== objectId);
+    }
+
+    if (objectType === "army") {
+        pageState.currentMapData.armies = pageState.currentMapData.armies
+            .filter(army => army.id !== objectId);
+    }
+
+    if (objectType === "event") {
+        pageState.currentMapData.events = pageState.currentMapData.events
+            .filter(mapEvent => mapEvent.id !== objectId);
+    }
+}
+
+function redrawCurrentMapData() {
+    ensureCurrentMapData();
+
+    pageState.featureLayers = [];
+    mapLayers.events.clearLayers();
+    mapLayers.controlZones.clearLayers();
+    mapLayers.armies.clearLayers();
+
+    pageState.currentMapData.controlZones.forEach(addControlZone);
+    pageState.currentMapData.armies.forEach(addArmyMarker);
+    pageState.currentMapData.events.forEach(addEventMarker);
+
+    renderObjectsList(pageState.currentMapData);
 }
 
 function createMapActionsPanel() {
@@ -334,11 +486,21 @@ function cancelActiveMapMode() {
 function clearTransientEditingState() {
     pageState.controlZoneDrawing.isDrawing = false;
     pageState.pendingPoint = null;
+    pageState.movingObject = null;
+    map.getContainer().classList.remove("map-move-mode");
     clearControlZoneDraft(false);
     hideMapObjectForm();
 }
 
 function handleMapClickForActiveMode(event) {
+    if (
+        pageState.activeMode === MAP_ACTION_MODES.MOVE_ARMY ||
+        pageState.activeMode === MAP_ACTION_MODES.MOVE_EVENT
+    ) {
+        moveSelectedMapObject(event);
+        return;
+    }
+
     if (pageState.activeMode === MAP_ACTION_MODES.CONTROL_ZONE) {
         handleMapClickForControlZoneDrawing(event);
         return;
@@ -381,6 +543,78 @@ function handleMapClickForControlZoneDrawing(event) {
 
     redrawControlZoneDraft();
     updateMapActionsPanel();
+}
+
+async function moveSelectedMapObject(event) {
+    if (!pageState.movingObject) {
+        setStatus("Не выбран объект для перемещения.", "warning");
+        return;
+    }
+
+    const lat = Number(event.latlng.lat.toFixed(6));
+    const lng = Number(event.latlng.lng.toFixed(6));
+    const { objectType, objectId } = pageState.movingObject;
+
+    if (objectType === "army") {
+        await moveArmy(objectId, lat, lng);
+        return;
+    }
+
+    if (objectType === "event") {
+        await moveEvent(objectId, lat, lng);
+    }
+}
+
+async function moveArmy(armyId, lat, lng) {
+    try {
+        setStatus("Сохраняю новую позицию армии...", "info");
+
+        const response = await updateArmyPositionOnBackend(armyId, {
+            datePosition: getCurrentMapDate(),
+            coordinate: [lat, lng],
+            note: `Позиция обновлена на карте ${formatDate(getCurrentMapDate())}.`
+        });
+
+        const movedArmy = mapBackendArmyToFrontendArmy(response);
+
+        ensureCurrentMapData();
+        pageState.currentMapData.armies = pageState.currentMapData.armies
+            .map(army => army.id === armyId ? movedArmy : army);
+
+        completeMoveMode("Позиция армии сохранена в БД и обновлена на карте.", "success");
+    } catch (error) {
+        console.error(error);
+        setStatus("Не удалось сохранить новую позицию армии.", "danger");
+    }
+}
+
+async function moveEvent(eventId, lat, lng) {
+    try {
+        await updateEventPositionOnBackend(eventId, {
+            coordinate: [lat, lng]
+        });
+
+        ensureCurrentMapData();
+        pageState.currentMapData.events = pageState.currentMapData.events
+            .map(mapEvent => mapEvent.id === eventId
+                ? { ...mapEvent, lat, lng }
+                : mapEvent);
+
+        completeMoveMode("Событие перемещено на карте. API сохранения событий пока не реализован.", "secondary");
+    } catch (error) {
+        console.error(error);
+        setStatus("Не удалось переместить событие.", "danger");
+    }
+}
+
+function completeMoveMode(message, type) {
+    pageState.activeMode = null;
+    pageState.movingObject = null;
+    map.getContainer().classList.remove("map-move-mode");
+    map.getContainer().style.cursor = "";
+    redrawCurrentMapData();
+    updateMapActionsPanel();
+    setStatus(message, type);
 }
 
 function redrawControlZoneDraft() {
@@ -499,6 +733,30 @@ function mapBackendControlZoneToFrontendZone(zone) {
     };
 }
 
+function mapBackendArmyToFrontendArmy(army) {
+    const coordinate = getLeafletCoordinateFromBackendPoint(army.coordinate ?? army.position?.coordinate);
+    const side = {
+        id: army.warSideId,
+        title: army.sideTitle,
+        colorHex: army.colorHex
+    };
+    const type = army.typeArmy ?? army.type ?? "";
+
+    return {
+        id: army.id,
+        positionId: army.positionId,
+        title: army.name ?? army.title ?? `Армия #${army.id}`,
+        type,
+        side,
+        warSideId: army.warSideId,
+        date: army.datePosition ?? army.position?.date,
+        description: `Тип: ${type || "не указан"}. Сторона: ${side.title ?? army.warSideId}. Дата: ${formatDate(army.datePosition ?? army.position?.date)}.`,
+        lat: coordinate?.[0],
+        lng: coordinate?.[1],
+        markerLetter: getArmyMarkerLetter(type)
+    };
+}
+
 // Временно: если у операции ещё нет warId, оставляем 1 для MVP.
 function getCurrentWarId() {
     return pageState.operation?.warId ?? 1;
@@ -557,6 +815,29 @@ function getLeafletCoordinatesFromBackendZone(zone) {
     }
 
     return [];
+}
+
+function getLeafletCoordinateFromBackendPoint(point) {
+    const parsedPoint = typeof point === "string"
+        ? tryParseJson(point)
+        : point;
+
+    if (!parsedPoint) {
+        return null;
+    }
+
+    const pointObject = parsedPoint.type === "Feature"
+        ? parsedPoint.geometry
+        : parsedPoint;
+
+    if (pointObject?.type !== "Point" || !Array.isArray(pointObject.coordinates)) {
+        return null;
+    }
+
+    const lng = pointObject.coordinates[0];
+    const lat = pointObject.coordinates[1];
+
+    return [lat, lng];
 }
 
 function convertBackendGeometryToLeafletCoordinates(geometry) {
@@ -645,6 +926,10 @@ function tryParseJson(value) {
 
 function isValidControlZone(zone) {
     return Array.isArray(zone.coordinates) && zone.coordinates.length > 0;
+}
+
+function isValidArmy(army) {
+    return isValidCoordinate(army.lat) && isValidCoordinate(army.lng);
 }
 
 function preparePointObjectForm(event, mode) {
@@ -738,6 +1023,18 @@ function updateMapActionsPanel() {
         elements.actionHint.textContent = pageState.pendingPoint
             ? "Заполните данные события."
             : "Выберите точку для события.";
+        return;
+    }
+
+    if (pageState.activeMode === MAP_ACTION_MODES.MOVE_ARMY) {
+        elements.actionHint.textContent = "Выберите новую позицию армии на карте.";
+        elements.mapObjectForm.hidden = true;
+        return;
+    }
+
+    if (pageState.activeMode === MAP_ACTION_MODES.MOVE_EVENT) {
+        elements.actionHint.textContent = "Выберите новую позицию события на карте.";
+        elements.mapObjectForm.hidden = true;
     }
 }
 
@@ -765,7 +1062,7 @@ function clearPendingPointForm() {
     }
 }
 
-function saveMapObjectDraft(event) {
+async function saveMapObjectDraft(event) {
     event.preventDefault();
 
     if (!pageState.pendingPoint) {
@@ -774,7 +1071,7 @@ function saveMapObjectDraft(event) {
     }
 
     if (pageState.pendingPoint.mode === MAP_ACTION_MODES.ARMY) {
-        saveArmyDraft();
+        await saveArmyDraft();
         return;
     }
 
@@ -783,33 +1080,36 @@ function saveMapObjectDraft(event) {
     }
 }
 
-function saveArmyDraft() {
+async function saveArmyDraft() {
     ensureCurrentMapData();
 
     const sideId = Number(elements.mapObjectSideSelect.value) || DEFAULT_WAR_SIDE_ID;
-    const side = getSideById(sideId);
     const type = elements.mapObjectTypeInput.value.trim() || "армия";
     const title = elements.mapObjectTitleInput.value.trim() || `Армия #${pageState.nextTempArmyId}`;
-    const markerLetter = getArmyMarkerLetter(type);
 
-    const army = {
-        id: pageState.nextTempArmyId,
-        title,
-        type,
-        side,
-        warSideId: sideId,
-        date: getCurrentMapDate(),
-        description: `Тип: ${type}. Сторона: ${side?.title ?? sideId}. Дата: ${formatDate(getCurrentMapDate())}.`,
-        lat: pageState.pendingPoint.lat,
-        lng: pageState.pendingPoint.lng,
-        markerLetter
-    };
+    try {
+        setStatus("Сохраняю армию и позицию в базу данных...", "info");
 
-    pageState.nextTempArmyId += 1;
-    pageState.currentMapData.armies.push(army);
-    addArmyMarker(army);
-    renderObjectsList(pageState.currentMapData);
-    completePointObjectMode("Армия добавлена на карту как локальная MVP-запись.");
+        const response = await saveArmyToBackend({
+            warSideId: sideId,
+            name: title,
+            typeArmy: type,
+            summary: null,
+            datePosition: getCurrentMapDate(),
+            coordinate: [pageState.pendingPoint.lat, pageState.pendingPoint.lng],
+            positionNote: `Позиция создана на карте ${formatDate(getCurrentMapDate())}.`
+        });
+
+        const army = mapBackendArmyToFrontendArmy(response);
+
+        pageState.currentMapData.armies.push(army);
+        addArmyMarker(army);
+        renderObjectsList(pageState.currentMapData);
+        completePointObjectMode("Армия сохранена в БД и добавлена на карту.");
+    } catch (error) {
+        console.error(error);
+        setStatus("Не удалось сохранить армию в БД.", "danger");
+    }
 }
 
 function saveEventDraft() {
@@ -978,6 +1278,30 @@ async function renderTemporaryMapObjects() {
         );
     }
 
+    try {
+        const warId = getCurrentWarId();
+        const date = getCurrentMapDate();
+
+        const backendArmies = await fetchArmiesByWarAndDate(warId, date);
+
+        if (!Array.isArray(backendArmies)) {
+            throw new Error("API армий вернул не массив.");
+        }
+
+        mapData.armies = backendArmies
+            .map(mapBackendArmyToFrontendArmy)
+            .filter(isValidArmy);
+    } catch (error) {
+        console.error("Не удалось загрузить армии из БД:", error);
+
+        mapData.armies = [];
+
+        setStatus(
+            "Зоны контроля обработаны, но армии из БД не загрузились. Проверь API армий и параметры warId/date.",
+            "warning"
+        );
+    }
+
     pageState.currentMapData = mapData;
 
     mapData.controlZones.forEach(addControlZone);
@@ -1019,6 +1343,7 @@ function createEventPopupHtml(event) {
         <strong>${escapeHtml(event.title)}</strong><br>
         <span>${escapeHtml(formatDate(event.date))}</span><br>
         <span>${escapeHtml(event.description)}</span>
+        ${createObjectActionButtonsHtml("event", event.id, true)}
     `;
 }
 
@@ -1026,6 +1351,7 @@ function createArmyPopupHtml(army) {
     return `
         <strong>${escapeHtml(army.title)}</strong><br>
         <span>${escapeHtml(army.description)}</span>
+        ${createObjectActionButtonsHtml("army", army.id, true)}
     `;
 }
 
@@ -1034,6 +1360,34 @@ function createControlZonePopupHtml(zone) {
         <strong>${escapeHtml(zone.title)}</strong><br>
         <span>${escapeHtml(zone.description)}</span><br>
         <span>Количество точек: ${zone.coordinates.length}</span>
+        ${createObjectActionButtonsHtml("controlZone", zone.id, false)}
+    `;
+}
+
+function createObjectActionButtonsHtml(objectType, objectId, canMove) {
+    return `
+        <div class="d-flex gap-2 mt-2">
+            ${canMove ? createMoveButtonHtml(objectType, objectId) : ""}
+            <button class="btn btn-sm btn-outline-danger"
+                    type="button"
+                    data-delete-map-object
+                    data-object-type="${escapeHtml(objectType)}"
+                    data-object-id="${escapeHtml(String(objectId))}">
+                Удалить
+            </button>
+        </div>
+    `;
+}
+
+function createMoveButtonHtml(objectType, objectId) {
+    return `
+        <button class="btn btn-sm btn-outline-primary"
+                type="button"
+                data-move-map-object
+                data-object-type="${escapeHtml(objectType)}"
+                data-object-id="${escapeHtml(String(objectId))}">
+            Переместить
+        </button>
     `;
 }
 

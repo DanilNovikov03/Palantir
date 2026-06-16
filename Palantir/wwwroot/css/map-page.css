@@ -167,6 +167,12 @@ body {
     font-size: 0.78rem;
     padding: 6px 8px;
 }
+
+#map.map-move-mode .leaflet-interactive,
+#map.map-move-mode .leaflet-marker-icon,
+#map.map-move-mode .leaflet-popup {
+    pointer-events: none;
+}
 /*
 Потом может сделаю это для телефонов, а так вроде не надо пока
 @media (max-width: 900px) {

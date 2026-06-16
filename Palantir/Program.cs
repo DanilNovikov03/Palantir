@@ -32,6 +32,7 @@ builder.Services.AddScoped<ITheaterRepository, TheaterRepository>();
 builder.Services.AddScoped<IWarRepository, WarRepository>();
 builder.Services.AddScoped<IWarSideRepository, WarSideRepository>();
 builder.Services.AddScoped<IControlZoneRepository, ControlZoneRepository>();
+builder.Services.AddScoped<IArmyPositionRepository, ArmyPositionRepository>();
 // Add Service
 builder.Services.AddScoped<IArmyService, ArmyService>();
 builder.Services.AddScoped<IOperationService, OperationService>();
@@ -41,6 +42,7 @@ builder.Services.AddScoped<ITheaterService, TheaterService>();
 builder.Services.AddScoped<IWarService, WarService>();
 builder.Services.AddScoped<IWarSideService, WarSideService>();
 builder.Services.AddScoped<IControlZoneService, ControlZoneService>();
+builder.Services.AddScoped<IArmyPositionService, ArmyPositionServices>();
 
 var app = builder.Build();
 
