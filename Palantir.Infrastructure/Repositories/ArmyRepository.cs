@@ -4,10 +4,8 @@
     {
         private readonly PalantirDbContext _dbContext;
 
-        public ArmyRepository(PalantirDbContext dbContext)
-        {
+        public ArmyRepository(PalantirDbContext dbContext) =>
             _dbContext = dbContext;
-        }
 
         public async Task<List<Army>> GetAllAsync() =>
             await _dbContext.armies.ToListAsync<Army>();

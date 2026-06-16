@@ -2,7 +2,7 @@
 {
     public class WarService : IWarService
     {
-        IWarRepository _repository;
+        private readonly IWarRepository _repository;
 
         public WarService(IWarRepository repository) =>
             _repository = repository;

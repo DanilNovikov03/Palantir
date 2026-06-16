@@ -1,11 +1,9 @@
 ﻿
-using Palantir.Domain.Models;
-
 namespace Palantir.Application.Services
 {
     public class WarSideService : IWarSideService
     {
-        IWarSideRepository _repository;
+        private readonly IWarSideRepository _repository;
 
         public WarSideService(IWarSideRepository repository) =>
             _repository = repository;

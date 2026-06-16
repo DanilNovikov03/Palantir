@@ -4,10 +4,8 @@
     {
         private readonly PalantirDbContext _dbContext;
 
-        public WarRepository(PalantirDbContext dbContext)
-        {
+        public WarRepository(PalantirDbContext dbContext) =>
             _dbContext = dbContext;
-        }
 
         public async Task<List<War>> GetAllAsync() =>
             await _dbContext.wars.ToListAsync<War>();
@@ -41,5 +39,9 @@
                 await _dbContext.SaveChangesAsync();
             }
         }
+
+        public async Task<bool> ExistsAsync(int id) =>
+            await _dbContext.wars
+                .AnyAsync(w => w.war_id == id);
     }
 }

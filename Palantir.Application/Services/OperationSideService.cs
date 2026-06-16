@@ -1,11 +1,8 @@
-﻿using Npgsql.EntityFrameworkCore.PostgreSQL.Query.ExpressionTranslators.Internal;
-using Palantir.Domain.Models;
-
-namespace Palantir.Application.Services
+﻿namespace Palantir.Application.Services
 {
     public class OperationSideService : IOperationSideService
     {
-        IOperationSideRepository _repository;
+        private readonly IOperationSideRepository _repository;
 
         public OperationSideService(IOperationSideRepository repository) =>
             _repository = repository;
@@ -36,7 +33,7 @@ namespace Palantir.Application.Services
                 .GetByOperationIdAsync(operationId);
 
             return operations.Select(oper => 
-                Response(oper)
+                    Response(oper)
                 ).ToList();
         }
 
@@ -46,7 +43,7 @@ namespace Palantir.Application.Services
                 .GetByWarSideIdAsync(warSideId);
 
             return warSides.Select(warSide => 
-                Response(warSide)
+                    Response(warSide)
                 ).ToList();
         }
 

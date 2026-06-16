@@ -10,8 +10,15 @@ builder.Services.AddDbContext<PalantirDbContext>(options => options.UseNpgsql(
     o => o.UseNetTopologySuite())
 );
 
+
 // Add services to the container.
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.Converters.Add(
+            new NetTopologySuite.IO.Converters.GeoJsonConverterFactory()
+        );
+    });
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -24,6 +31,7 @@ builder.Services.AddScoped<ISideRepository, SideRepository>();
 builder.Services.AddScoped<ITheaterRepository, TheaterRepository>();
 builder.Services.AddScoped<IWarRepository, WarRepository>();
 builder.Services.AddScoped<IWarSideRepository, WarSideRepository>();
+builder.Services.AddScoped<IControlZoneRepository, ControlZoneRepository>();
 // Add Service
 builder.Services.AddScoped<IArmyService, ArmyService>();
 builder.Services.AddScoped<IOperationService, OperationService>();
@@ -32,6 +40,7 @@ builder.Services.AddScoped<ISideService, SideService>();
 builder.Services.AddScoped<ITheaterService, TheaterService>();
 builder.Services.AddScoped<IWarService, WarService>();
 builder.Services.AddScoped<IWarSideService, WarSideService>();
+builder.Services.AddScoped<IControlZoneService, ControlZoneService>();
 
 var app = builder.Build();
 
@@ -42,11 +51,14 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.MapGet("/", () => "Hello, World");
-
 app.UseHttpsRedirection();
 
 app.UseAuthorization();
+
+app.MapControllers();
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 app.MapControllers();
 

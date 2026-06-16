@@ -10,7 +10,6 @@ namespace Palantir.Presenatation.Controllers
             _warService = warService;
 
 
-        //[HttpGet(Name = "GetWars")]
         [HttpGet]
         public async Task<ActionResult<IEnumerable<WarResponse>>> GetAll()
         {
@@ -30,7 +29,11 @@ namespace Palantir.Presenatation.Controllers
         public async Task<ActionResult> Add(WarRequest warRequest)
         {
             var response = await _warService.AddAsync(warRequest);
-            return CreatedAtAction(nameof(GetById), new { id = response.Id });
+            return CreatedAtAction(
+                nameof(GetById), 
+                new { id = response.Id }, 
+                response
+            );
         }
 
         [HttpPut("{id}")]

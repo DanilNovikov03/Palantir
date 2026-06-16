@@ -7,5 +7,6 @@
         Task AddAsync(War war);
         Task UpdateAsync(War war);
         Task DeleteAsync(int id);
+        Task<bool> ExistsAsync(int id);
     }
 }

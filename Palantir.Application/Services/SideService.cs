@@ -2,7 +2,7 @@
 {
     public class SideService : ISideService
     {
-        ISideRepository _repository;
+        private readonly ISideRepository _repository;
 
         public SideService(ISideRepository repository) =>
             _repository = repository;
