@@ -168,9 +168,9 @@ body {
     padding: 6px 8px;
 }
 
-#map.map-move-mode .leaflet-interactive,
-#map.map-move-mode .leaflet-marker-icon,
-#map.map-move-mode .leaflet-popup {
+#map.map-active-mode .leaflet-interactive,
+#map.map-active-mode .leaflet-marker-icon,
+#map.map-active-mode .leaflet-popup {
     pointer-events: none;
 }
 /*

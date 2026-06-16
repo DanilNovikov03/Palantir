@@ -13,8 +13,10 @@ import {
     fetchOperation,
     fetchControlZonesByWarAndDate,
     fetchArmiesByWarAndDate,
+    fetchEventsByWarAndDate,
     saveControlZoneToBackend,
     saveArmyToBackend,
+    saveEventToBackend,
     updateArmyPositionOnBackend,
     updateEventPositionOnBackend,
     deleteMapObjectFromBackend
@@ -40,6 +42,8 @@ const MAP_ACTION_MODES = {
     MOVE_ARMY: "move-army",
     MOVE_EVENT: "move-event"
 };
+const MAP_ACTIVE_MODE_CLASS = "map-active-mode";
+const MAP_MOVE_MODE_CLASS = "map-move-mode";
 
 // Пока временно для MVP.
 // Потом лучше сделать выбор стороны конфликта в интерфейсе.
@@ -326,7 +330,7 @@ function startMoveMapObjectMode(objectType, objectId) {
         return;
     }
 
-    map.getContainer().classList.add("map-move-mode");
+    updateMapInteractionClass();
     map.getContainer().style.cursor = "crosshair";
     updateMapActionsPanel();
 }
@@ -453,7 +457,9 @@ function activateMapMode(mode) {
     }
 
     clearTransientEditingState();
+    map.closePopup();
     pageState.activeMode = mode;
+    updateMapInteractionClass();
 
     if (mode === MAP_ACTION_MODES.CONTROL_ZONE) {
         pageState.controlZoneDrawing.isDrawing = true;
@@ -477,6 +483,7 @@ function activateMapMode(mode) {
 function cancelActiveMapMode() {
     clearTransientEditingState();
     pageState.activeMode = null;
+    updateMapInteractionClass();
     map.getContainer().style.cursor = "";
 
     setStatus("Режим добавления объекта отменён.", "secondary");
@@ -487,9 +494,20 @@ function clearTransientEditingState() {
     pageState.controlZoneDrawing.isDrawing = false;
     pageState.pendingPoint = null;
     pageState.movingObject = null;
-    map.getContainer().classList.remove("map-move-mode");
+    map.getContainer().classList.remove(MAP_ACTIVE_MODE_CLASS, MAP_MOVE_MODE_CLASS);
     clearControlZoneDraft(false);
     hideMapObjectForm();
+}
+
+function updateMapInteractionClass() {
+    const mapContainer = map.getContainer();
+    const hasActiveMode = Boolean(pageState.activeMode);
+    const isMoveMode =
+        pageState.activeMode === MAP_ACTION_MODES.MOVE_ARMY ||
+        pageState.activeMode === MAP_ACTION_MODES.MOVE_EVENT;
+
+    mapContainer.classList.toggle(MAP_ACTIVE_MODE_CLASS, hasActiveMode);
+    mapContainer.classList.toggle(MAP_MOVE_MODE_CLASS, isMoveMode);
 }
 
 function handleMapClickForActiveMode(event) {
@@ -590,17 +608,20 @@ async function moveArmy(armyId, lat, lng) {
 
 async function moveEvent(eventId, lat, lng) {
     try {
-        await updateEventPositionOnBackend(eventId, {
+        setStatus("Сохраняю новую позицию события...", "info");
+
+        const response = await updateEventPositionOnBackend(eventId, {
             coordinate: [lat, lng]
         });
+        const movedEvent = mapBackendEventToFrontendEvent(response);
 
         ensureCurrentMapData();
         pageState.currentMapData.events = pageState.currentMapData.events
             .map(mapEvent => mapEvent.id === eventId
-                ? { ...mapEvent, lat, lng }
+                ? movedEvent
                 : mapEvent);
 
-        completeMoveMode("Событие перемещено на карте. API сохранения событий пока не реализован.", "secondary");
+        completeMoveMode("Позиция события сохранена в БД и обновлена на карте.", "success");
     } catch (error) {
         console.error(error);
         setStatus("Не удалось переместить событие.", "danger");
@@ -610,7 +631,7 @@ async function moveEvent(eventId, lat, lng) {
 function completeMoveMode(message, type) {
     pageState.activeMode = null;
     pageState.movingObject = null;
-    map.getContainer().classList.remove("map-move-mode");
+    updateMapInteractionClass();
     map.getContainer().style.cursor = "";
     redrawCurrentMapData();
     updateMapActionsPanel();
@@ -697,6 +718,7 @@ async function finishControlZoneDrawing() {
         clearControlZoneDraft(false);
         pageState.activeMode = null;
         pageState.controlZoneDrawing.isDrawing = false;
+        updateMapInteractionClass();
         map.getContainer().style.cursor = "";
         updateMapActionsPanel();
 
@@ -757,9 +779,43 @@ function mapBackendArmyToFrontendArmy(army) {
     };
 }
 
+function mapBackendEventToFrontendEvent(mapEvent) {
+    const coordinate = getLeafletCoordinateFromBackendEvent(mapEvent);
+    const side = {
+        id: mapEvent.warSideId,
+        title: mapEvent.sideTitle,
+        colorHex: mapEvent.colorHex
+    };
+    const type = mapEvent.type ?? "";
+    const text = mapEvent.text ?? "";
+
+    return {
+        id: mapEvent.id,
+        title: mapEvent.title ?? `Событие #${mapEvent.id}`,
+        type,
+        side,
+        warId: mapEvent.warId,
+        operationId: mapEvent.operationId,
+        warSideId: mapEvent.warSideId,
+        date: mapEvent.date,
+        description: text || `Тип: ${type || "не указан"}. Сторона: ${side.title ?? mapEvent.warSideId ?? "не указана"}.`,
+        lat: coordinate?.[0],
+        lng: coordinate?.[1],
+        markerLetter: "!"
+    };
+}
+
 // Временно: если у операции ещё нет warId, оставляем 1 для MVP.
 function getCurrentWarId() {
     return pageState.operation?.warId ?? 1;
+}
+
+function getCurrentOperationId() {
+    const operationId = Number(pageState.operationId);
+
+    return Number.isInteger(operationId) && operationId > 0
+        ? operationId
+        : null;
 }
 
 function getCurrentMapDate() {
@@ -838,6 +894,14 @@ function getLeafletCoordinateFromBackendPoint(point) {
     const lat = pointObject.coordinates[1];
 
     return [lat, lng];
+}
+
+function getLeafletCoordinateFromBackendEvent(mapEvent) {
+    if (isValidCoordinate(mapEvent.latitude) && isValidCoordinate(mapEvent.longitude)) {
+        return [Number(mapEvent.latitude), Number(mapEvent.longitude)];
+    }
+
+    return getLeafletCoordinateFromBackendPoint(mapEvent.coordinate);
 }
 
 function convertBackendGeometryToLeafletCoordinates(geometry) {
@@ -932,6 +996,10 @@ function isValidArmy(army) {
     return isValidCoordinate(army.lat) && isValidCoordinate(army.lng);
 }
 
+function isValidEvent(mapEvent) {
+    return isValidCoordinate(mapEvent.lat) && isValidCoordinate(mapEvent.lng);
+}
+
 function preparePointObjectForm(event, mode) {
     const lat = Number(event.latlng.lat.toFixed(6));
     const lng = Number(event.latlng.lng.toFixed(6));
@@ -982,6 +1050,7 @@ function clearControlZoneDraft(updatePanel = true) {
     if (updatePanel) {
         pageState.activeMode = null;
         pageState.controlZoneDrawing.isDrawing = false;
+        updateMapInteractionClass();
         map.getContainer().style.cursor = "";
         setStatus("Рисование зоны контроля отменено.", "secondary");
         updateMapActionsPanel();
@@ -1076,7 +1145,7 @@ async function saveMapObjectDraft(event) {
     }
 
     if (pageState.pendingPoint.mode === MAP_ACTION_MODES.EVENT) {
-        saveEventDraft();
+        await saveEventDraft();
     }
 }
 
@@ -1112,37 +1181,44 @@ async function saveArmyDraft() {
     }
 }
 
-function saveEventDraft() {
+async function saveEventDraft() {
     ensureCurrentMapData();
 
     const sideId = Number(elements.mapObjectSideSelect.value) || DEFAULT_WAR_SIDE_ID;
-    const side = getSideById(sideId);
     const title = elements.mapObjectTitleInput.value.trim() || `Событие #${pageState.nextTempEventId}`;
     const type = elements.mapObjectTypeInput.value.trim();
     const text = elements.mapObjectDescriptionInput.value.trim();
 
-    const mapEvent = {
-        id: pageState.nextTempEventId,
-        title,
-        type,
-        side,
-        warSideId: sideId,
-        date: getCurrentMapDate(),
-        description: text || "Локальная запись события до подключения API.",
-        lat: pageState.pendingPoint.lat,
-        lng: pageState.pendingPoint.lng
-    };
+    try {
+        setStatus("Сохраняю событие в базу данных...", "info");
 
-    pageState.nextTempEventId += 1;
-    pageState.currentMapData.events.push(mapEvent);
-    addEventMarker(mapEvent);
-    renderObjectsList(pageState.currentMapData);
-    completePointObjectMode("Событие добавлено на карту как локальная MVP-запись.");
+        const response = await saveEventToBackend({
+            warId: getCurrentWarId(),
+            operationId: getCurrentOperationId(),
+            warSideId: sideId,
+            title,
+            text: text || null,
+            type: type || null,
+            date: getCurrentMapDate(),
+            coordinate: [pageState.pendingPoint.lat, pageState.pendingPoint.lng]
+        });
+
+        const mapEvent = mapBackendEventToFrontendEvent(response);
+
+        pageState.currentMapData.events.push(mapEvent);
+        addEventMarker(mapEvent);
+        renderObjectsList(pageState.currentMapData);
+        completePointObjectMode("Событие сохранено в БД и добавлено на карту.");
+    } catch (error) {
+        console.error(error);
+        setStatus("Не удалось сохранить событие в БД.", "danger");
+    }
 }
 
 function completePointObjectMode(message) {
     pageState.pendingPoint = null;
     pageState.activeMode = null;
+    updateMapInteractionClass();
     map.getContainer().style.cursor = "";
     hideMapObjectForm();
     updateMapActionsPanel();
@@ -1239,6 +1315,7 @@ async function renderTemporaryMapObjects() {
     clearMapLayers();
 
     const mapData = createTemporaryMapData();
+    mapData.events = [];
 
     try {
         const warId = getCurrentWarId();
@@ -1298,6 +1375,38 @@ async function renderTemporaryMapObjects() {
 
         setStatus(
             "Зоны контроля обработаны, но армии из БД не загрузились. Проверь API армий и параметры warId/date.",
+            "warning"
+        );
+    }
+
+    try {
+        const warId = getCurrentWarId();
+        const date = getCurrentMapDate();
+        const operationId = getCurrentOperationId();
+
+        const backendEvents = await fetchEventsByWarAndDate(warId, date, operationId);
+
+        if (!Array.isArray(backendEvents)) {
+            throw new Error("API событий вернул не массив.");
+        }
+
+        mapData.events = backendEvents
+            .map(mapBackendEventToFrontendEvent)
+            .filter(isValidEvent);
+
+        if (mapData.events.length === 0) {
+            setStatus(
+                `На ${formatDate(date)} события отсутствуют.`,
+                "secondary"
+            );
+        }
+    } catch (error) {
+        console.error("Не удалось загрузить события из БД:", error);
+
+        mapData.events = [];
+
+        setStatus(
+            "Зоны контроля и армии обработаны, но события из БД не загрузились. Проверь API событий и параметры warId/date/operationId.",
             "warning"
         );
     }

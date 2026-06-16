@@ -41,6 +41,27 @@ export async function fetchArmiesByWarAndDate(warId, date) {
     return await response.json();
 }
 
+export async function fetchEventsByWarAndDate(warId, date, operationId = null) {
+    const params = new URLSearchParams({
+        date: String(date)
+    });
+
+    if (operationId !== null && operationId !== undefined) {
+        params.set("operationId", String(operationId));
+    }
+
+    const url = `/api/events/by-war/${encodeURIComponent(warId)}?${params.toString()}`;
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Ошибка загрузки событий: ${response.status}. ${errorText}`);
+    }
+
+    return await response.json();
+}
+
 export async function saveControlZoneToBackend(request) {
     const body = {
         warId: request.warId,
@@ -93,6 +114,35 @@ export async function saveArmyToBackend(request) {
     return await response.json();
 }
 
+export async function saveEventToBackend(request) {
+    const body = {
+        warId: request.warId,
+        operationId: request.operationId,
+        warSideId: request.warSideId,
+        title: request.title,
+        text: request.text,
+        type: request.type,
+        date: request.date,
+        latitude: request.coordinate[0],
+        longitude: request.coordinate[1]
+    };
+
+    const response = await fetch("/api/events", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Ошибка сохранения события: ${response.status}. ${errorText}`);
+    }
+
+    return await response.json();
+}
+
 export async function updateArmyPositionOnBackend(armyId, request) {
     const body = {
         datePosition: request.datePosition,
@@ -117,13 +167,25 @@ export async function updateArmyPositionOnBackend(armyId, request) {
 }
 
 export async function updateEventPositionOnBackend(eventId, request) {
-    return {
-        updatedOnServer: false,
-        eventId,
+    const body = {
         latitude: request.coordinate[0],
-        longitude: request.coordinate[1],
-        reason: "API перемещения событий пока не реализован."
+        longitude: request.coordinate[1]
     };
+
+    const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/position`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Ошибка перемещения события: ${response.status}. ${errorText}`);
+    }
+
+    return await response.json();
 }
 
 export async function deleteMapObjectFromBackend(objectType, objectId) {
@@ -169,6 +231,10 @@ function getDeleteUrl(objectType, objectId) {
 
     if (objectType === "army") {
         return `/api/army/${encodedId}`;
+    }
+
+    if (objectType === "event") {
+        return `/api/events/${encodedId}`;
     }
 
     return null;
