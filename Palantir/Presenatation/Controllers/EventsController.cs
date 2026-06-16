@@ -9,6 +9,7 @@ namespace Palantir.Presenatation.Controllers
         public EventsController(IEventService eventService) =>
             _eventService = eventService;
 
+
         [HttpGet("{id:int}")]
         public async Task<ActionResult<EventResponse>> GetById(int id)
         {

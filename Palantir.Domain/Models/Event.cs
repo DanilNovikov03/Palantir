@@ -1,6 +1,6 @@
 ﻿namespace Palantir.Domain.Models
 {
-    [Table("event")]
+    [Table("events")]
     [Index("war_id", "date_ev", Name = "idx_events_war_date")]
     public partial class Event
     {

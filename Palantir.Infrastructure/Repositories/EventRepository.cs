@@ -26,9 +26,7 @@ namespace Palantir.Infrastructure.Repositories
                     mapEvent.date_ev == date);
 
             if (operationId is not null)
-            {
                 query = query.Where(mapEvent => mapEvent.operation_id == operationId);
-            }
 
             return await query
                 .OrderBy(mapEvent => mapEvent.event_id)
@@ -51,13 +49,12 @@ namespace Palantir.Infrastructure.Repositories
         {
             var mapEvent = await _dbContext.events.FindAsync(id);
 
-            if (mapEvent is null)
+            if (mapEvent is not null)
             {
-                return;
+                _dbContext.events.Remove(mapEvent);
+                await _dbContext.SaveChangesAsync();
             }
 
-            _dbContext.events.Remove(mapEvent);
-            await _dbContext.SaveChangesAsync();
         }
 
         private IQueryable<Event> EventsWithSide() =>
