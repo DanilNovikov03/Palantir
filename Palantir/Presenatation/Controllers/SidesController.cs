@@ -9,6 +9,12 @@
         public SidesController(ISideService sideService) =>
             _sideService = sideService;
 
+        [HttpGet]
+        public async Task<ActionResult<List<SideResponse>>> GetAll()
+        {
+            var sides = await _sideService.GetAllAsync();
+            return Ok(sides);
+        }
 
         [HttpGet("{id}")]
         public async Task<ActionResult<SideResponse>> GetById(int id)
@@ -22,7 +28,7 @@
         public async Task<ActionResult> Add(SideRequest sideRequest)
         {
             var response = await _sideService.AddAsync(sideRequest);
-            return CreatedAtAction(nameof(GetById), new { response.Id });
+            return CreatedAtAction(nameof(GetById), new { id = response.Id }, response);
         }
 
         [HttpPut("{id}")]

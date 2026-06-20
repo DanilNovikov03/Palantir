@@ -90,6 +90,9 @@
             new OperationSideResponse(
                 operationSide.operation_id,
                 operationSide.war_side_id,
+                operationSide.war_side.side_id,
+                operationSide.war_side.side.title,
+                operationSide.war_side.color_hex,
                 operationSide.role_side,
                 operationSide.note
             );

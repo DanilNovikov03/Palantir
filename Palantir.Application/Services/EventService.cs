@@ -124,7 +124,7 @@ namespace Palantir.Application.Services
                 mapEvent.coordinate.Y,
                 mapEvent.coordinate.X,
                 mapEvent.war_side?.side?.title,
-                null
+                mapEvent.war_side?.color_hex
             );
     }
 }

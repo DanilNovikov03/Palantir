@@ -19,6 +19,9 @@
 
         public string? note { get; set; }
 
+        [StringLength(20)]
+        public string? color_hex { get; set; }
+
         [InverseProperty("war_side")]
         public virtual ICollection<Army> armies { get; set; } = new List<Army>();
 

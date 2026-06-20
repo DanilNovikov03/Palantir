@@ -6,6 +6,7 @@
         int SideId,
         DateOnly? JoinedDate,
         DateOnly? OutDate,
-        string? Note
+        string? Note,
+        string? ColorHex
     );
 }

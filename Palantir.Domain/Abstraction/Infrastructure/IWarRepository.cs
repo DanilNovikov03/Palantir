@@ -4,6 +4,7 @@
     {
         Task<List<War>> GetAllAsync();
         Task<War?> GetByIdAsync(int id);
+        Task<List<WarSide>> GetSidesAsync(int warId);
         Task AddAsync(War war);
         Task UpdateAsync(War war);
         Task DeleteAsync(int id);

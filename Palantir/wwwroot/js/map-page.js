@@ -11,6 +11,8 @@ import {
 
 import {
     fetchOperation,
+    fetchOperationSides,
+    fetchWarSides,
     fetchControlZonesByWarAndDate,
     fetchArmiesByWarAndDate,
     fetchEventsByWarAndDate,
@@ -27,8 +29,6 @@ import {
 } from "./map-demo-data.js";
 
 import {
-    SIDE_OPTIONS,
-    getSideById,
     getSideColor
 } from "./map-side-colors.js";
 
@@ -45,15 +45,14 @@ const MAP_ACTION_MODES = {
 const MAP_ACTIVE_MODE_CLASS = "map-active-mode";
 const MAP_MOVE_MODE_CLASS = "map-move-mode";
 
-// Пока временно для MVP.
-// Потом лучше сделать выбор стороны конфликта в интерфейсе.
-const DEFAULT_WAR_SIDE_ID = 1;
 const DEFAULT_CONTROL_ZONE_PRECISION = "Approximate";
 
 const pageState = {
     operationId: getQueryParam("operationId"),
+    warId: Number(getQueryParam("warId")) || null,
     mapDate: normalizeDate(getQueryParam("date")) ?? DEFAULT_MAP_DATE,
     operation: null,
+    operationSides: [],
     featureLayers: [],
     currentMapData: null,
     activeMode: null,
@@ -164,6 +163,7 @@ async function init() {
     setupMapObjectPopupActions();
 
     await loadOperation(pageState.operationId);
+    await loadMapSides();
     await renderTemporaryMapObjects();
 }
 
@@ -429,30 +429,43 @@ function createMapActionsPanel() {
     elements.saveMapObjectBtn = panel.querySelector("#saveMapObjectBtn");
     elements.cancelMapObjectFormBtn = panel.querySelector("#cancelMapObjectFormBtn");
 
-    fillSideSelect(elements.controlZoneSideSelect);
-    fillSideSelect(elements.mapObjectSideSelect);
+    fillSideSelect(elements.controlZoneSideSelect, pageState.operationSides);
+    fillSideSelect(elements.mapObjectSideSelect, pageState.operationSides);
 }
 
-function fillSideSelect(select) {
+function fillSideSelect(select, sides) {
     if (!select) {
         return;
     }
 
     select.innerHTML = "";
 
-    SIDE_OPTIONS.forEach(side => {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = sides.length ? "Выберите сторону" : "Стороны операции не указаны";
+    select.appendChild(placeholder);
+
+    sides.forEach(side => {
         const option = document.createElement("option");
-        option.value = String(side.id);
+        option.value = String(side.warSideId);
         option.textContent = side.title;
+        option.dataset.sideId = String(side.sideId);
+        option.dataset.colorHex = getSideColor(side);
         select.appendChild(option);
     });
 
-    select.value = String(DEFAULT_WAR_SIDE_ID);
+    select.value = "";
+    select.disabled = sides.length === 0;
 }
 
 function activateMapMode(mode) {
     if (pageState.activeMode === mode) {
         cancelActiveMapMode();
+        return;
+    }
+
+    if (pageState.operationSides.length === 0) {
+        setStatus("Для операции не указаны стороны. Сначала добавьте связи operation_sides.", "warning");
         return;
     }
 
@@ -686,6 +699,11 @@ async function finishControlZoneDrawing() {
         return;
     }
 
+    if (!getSelectedWarSide(elements.controlZoneSideSelect)) {
+        setStatus("Выберите сторону для зоны контроля.", "warning");
+        return;
+    }
+
     try {
         setStatus("Сохраняю зону контроля в базу данных...", "info");
 
@@ -697,7 +715,7 @@ async function finishControlZoneDrawing() {
             id: drawing.nextTempZoneId,
             title: `Новая зона контроля #${drawing.nextTempZoneId}`,
             description: `Зона создана и отправлена на backend. Дата: ${formatDate(request.dateControl)}.`,
-            side: String(request.warSideId),
+            side: findMapSideByWarSideId(request.warSideId),
             warId: request.warId,
             warSideId: request.warSideId,
             dateControl: request.dateControl,
@@ -730,11 +748,11 @@ async function finishControlZoneDrawing() {
 }
 
 function createControlZoneSaveRequest(coordinates) {
-    const selectedSideId = Number(elements.controlZoneSideSelect?.value) || DEFAULT_WAR_SIDE_ID;
+    const selectedSide = getSelectedWarSide(elements.controlZoneSideSelect);
 
     return {
         warId: getCurrentWarId(),
-        warSideId: selectedSideId,
+        warSideId: selectedSide.warSideId,
         dateControl: getCurrentMapDate(),
         precisionControl: DEFAULT_CONTROL_ZONE_PRECISION,
         coordinates: coordinates.map(point => [...point])
@@ -746,7 +764,7 @@ function mapBackendControlZoneToFrontendZone(zone) {
         id: zone.id,
         title: `Зона контроля #${zone.id}`,
         description: `Дата: ${formatDate(zone.dateControl)}. Точность: ${zone.precisionControl}`,
-        side: String(zone.side ?? zone.warSideId ?? ""),
+        side: findMapSideByWarSideId(zone.warSideId),
         warId: zone.warId,
         warSideId: zone.warSideId,
         dateControl: zone.dateControl,
@@ -757,7 +775,9 @@ function mapBackendControlZoneToFrontendZone(zone) {
 
 function mapBackendArmyToFrontendArmy(army) {
     const coordinate = getLeafletCoordinateFromBackendPoint(army.coordinate ?? army.position?.coordinate);
-    const side = {
+    const side = findMapSideByWarSideId(army.warSideId) ?? {
+        warSideId: army.warSideId,
+        sideId: null,
         id: army.warSideId,
         title: army.sideTitle,
         colorHex: army.colorHex
@@ -781,7 +801,9 @@ function mapBackendArmyToFrontendArmy(army) {
 
 function mapBackendEventToFrontendEvent(mapEvent) {
     const coordinate = getLeafletCoordinateFromBackendEvent(mapEvent);
-    const side = {
+    const side = findMapSideByWarSideId(mapEvent.warSideId) ?? {
+        warSideId: mapEvent.warSideId,
+        sideId: null,
         id: mapEvent.warSideId,
         title: mapEvent.sideTitle,
         colorHex: mapEvent.colorHex
@@ -805,9 +827,8 @@ function mapBackendEventToFrontendEvent(mapEvent) {
     };
 }
 
-// Временно: если у операции ещё нет warId, оставляем 1 для MVP.
 function getCurrentWarId() {
-    return pageState.operation?.warId ?? 1;
+    return pageState.operation?.warId ?? pageState.warId ?? 1;
 }
 
 function getCurrentOperationId() {
@@ -1009,7 +1030,7 @@ function preparePointObjectForm(event, mode) {
     elements.mapObjectForm.hidden = false;
     elements.controlZoneModeControls.hidden = true;
     elements.mapObjectForm.reset();
-    elements.mapObjectSideSelect.value = String(DEFAULT_WAR_SIDE_ID);
+    elements.mapObjectSideSelect.value = "";
     elements.mapObjectCoordinatePreview.textContent = `Координата: ${lat}, ${lng}`;
 
     if (mode === MAP_ACTION_MODES.ARMY) {
@@ -1031,7 +1052,7 @@ function preparePointObjectForm(event, mode) {
         elements.mapObjectTypeInput.placeholder = "бой, наступление, перегруппировка";
         elements.mapObjectDescriptionGroup.hidden = false;
         elements.saveMapObjectBtn.textContent = "Сохранить событие";
-        setStatus("Заполните данные события. До подключения API оно будет добавлено на карту как локальная запись.", "info");
+        setStatus("Заполните данные события и выберите сторону операции.", "info");
     }
 
     updateMapActionsPanel();
@@ -1152,7 +1173,12 @@ async function saveMapObjectDraft(event) {
 async function saveArmyDraft() {
     ensureCurrentMapData();
 
-    const sideId = Number(elements.mapObjectSideSelect.value) || DEFAULT_WAR_SIDE_ID;
+    const selectedSide = getSelectedWarSide(elements.mapObjectSideSelect);
+    if (!selectedSide) {
+        setStatus("Выберите сторону армии.", "warning");
+        return;
+    }
+
     const type = elements.mapObjectTypeInput.value.trim() || "армия";
     const title = elements.mapObjectTitleInput.value.trim() || `Армия #${pageState.nextTempArmyId}`;
 
@@ -1160,7 +1186,7 @@ async function saveArmyDraft() {
         setStatus("Сохраняю армию и позицию в базу данных...", "info");
 
         const response = await saveArmyToBackend({
-            warSideId: sideId,
+            warSideId: selectedSide.warSideId,
             name: title,
             typeArmy: type,
             summary: null,
@@ -1184,7 +1210,12 @@ async function saveArmyDraft() {
 async function saveEventDraft() {
     ensureCurrentMapData();
 
-    const sideId = Number(elements.mapObjectSideSelect.value) || DEFAULT_WAR_SIDE_ID;
+    const selectedSide = getSelectedWarSide(elements.mapObjectSideSelect);
+    if (!selectedSide) {
+        setStatus("Выберите сторону события.", "warning");
+        return;
+    }
+
     const title = elements.mapObjectTitleInput.value.trim() || `Событие #${pageState.nextTempEventId}`;
     const type = elements.mapObjectTypeInput.value.trim();
     const text = elements.mapObjectDescriptionInput.value.trim();
@@ -1195,7 +1226,7 @@ async function saveEventDraft() {
         const response = await saveEventToBackend({
             warId: getCurrentWarId(),
             operationId: getCurrentOperationId(),
-            warSideId: sideId,
+            warSideId: selectedSide.warSideId,
             title,
             text: text || null,
             type: type || null,
@@ -1269,6 +1300,50 @@ async function loadOperation(operationId) {
 
         setStatus("Не удалось загрузить операцию через API. Карта всё равно открыта.", "warning");
     }
+}
+
+async function loadMapSides() {
+    try {
+        const sides = getCurrentOperationId()
+            ? await fetchOperationSides(getCurrentOperationId())
+            : await fetchWarSides(getCurrentWarId());
+
+        pageState.operationSides = Array.isArray(sides)
+            ? sides
+                .map(normalizeMapSide)
+                .filter(side => Number.isInteger(side.warSideId) && side.warSideId > 0)
+            : [];
+
+        if (pageState.operationSides.length === 0) {
+            setStatus("Для выбранной операции стороны не указаны.", "secondary");
+        }
+    } catch (error) {
+        console.error("Не удалось загрузить стороны карты:", error);
+        pageState.operationSides = [];
+        setStatus("Не удалось загрузить стороны операции. Добавление объектов временно недоступно.", "warning");
+    }
+
+    fillSideSelect(elements.controlZoneSideSelect, pageState.operationSides);
+    fillSideSelect(elements.mapObjectSideSelect, pageState.operationSides);
+}
+
+function normalizeMapSide(side) {
+    return {
+        warSideId: Number(side.warSideId),
+        sideId: Number(side.sideId),
+        title: side.title ?? side.name ?? side.sideTitle ?? "Без названия",
+        colorHex: side.colorHex ?? null
+    };
+}
+
+function getSelectedWarSide(select) {
+    const warSideId = Number(select?.value);
+    return findMapSideByWarSideId(warSideId);
+}
+
+function findMapSideByWarSideId(warSideId) {
+    const normalizedId = Number(warSideId);
+    return pageState.operationSides.find(side => side.warSideId === normalizedId) ?? null;
 }
 
 function renderOperationInfo(operation) {
@@ -1559,12 +1634,17 @@ function createEventIcon(event) {
 
 function resolveSideValue(side) {
     if (typeof side === "number") {
-        return getSideById(side) ?? { id: side };
+        return findMapSideByWarSideId(side) ?? { warSideId: side };
     }
 
     if (typeof side === "string" && /^\d+$/.test(side)) {
-        const sideId = Number(side);
-        return getSideById(sideId) ?? { id: sideId };
+        const warSideId = Number(side);
+        return findMapSideByWarSideId(warSideId) ?? { warSideId };
+    }
+
+    if (side && typeof side === "object") {
+        const mapSide = findMapSideByWarSideId(side.warSideId ?? side.id);
+        return mapSide ? { ...side, ...mapSide } : side;
     }
 
     return side;

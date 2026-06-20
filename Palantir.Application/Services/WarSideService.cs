@@ -61,6 +61,7 @@ namespace Palantir.Application.Services
                 joined_date = createWarSideRequest.JoinedDate,
                 out_date = createWarSideRequest.OutDate,
                 note = createWarSideRequest.Note,
+                color_hex = createWarSideRequest.ColorHex,
             };
 
             await _repository.AddAsync(warSide);
@@ -77,6 +78,7 @@ namespace Palantir.Application.Services
             warSide.joined_date = ws.JoinedDate;
             warSide.out_date = ws.OutDate;
             warSide.note = ws.Note;
+            warSide.color_hex = ws.ColorHex;
 
             await _repository.UpdateAsync(warSide);
         }
@@ -97,7 +99,8 @@ namespace Palantir.Application.Services
                 warSide.side_id,
                 warSide.joined_date,
                 warSide.out_date,
-                warSide.note
+                warSide.note,
+                warSide.color_hex
             );
 
         private void Exception() =>

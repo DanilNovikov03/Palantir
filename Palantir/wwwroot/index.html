@@ -16,7 +16,39 @@
         </header>
 
         <section>
-            <h2 class="mb-3">Военные конфликты</h2>
+            <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+                <h2 class="mb-0">Военные конфликты</h2>
+                <button id="addConflictButton" class="btn btn-primary" type="button">Добавить конфликт</button>
+            </div>
+
+            <div id="statusMessage" class="alert d-none" role="status"></div>
+
+            <form id="conflictForm" class="border rounded p-3 mb-4 d-none">
+                <input id="conflictId" type="hidden">
+                <h3 id="conflictFormTitle" class="h5 mb-3">Добавить конфликт</h3>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="conflictTitle" class="form-label">Название</label>
+                        <input id="conflictTitle" class="form-control" type="text" required maxlength="200">
+                    </div>
+                    <div class="col-md-3">
+                        <label for="conflictStartDate" class="form-label">Дата начала</label>
+                        <input id="conflictStartDate" class="form-control" type="date" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="conflictEndDate" class="form-label">Дата окончания</label>
+                        <input id="conflictEndDate" class="form-control" type="date">
+                    </div>
+                    <div class="col-12">
+                        <label for="conflictSummary" class="form-label">Краткое описание</label>
+                        <textarea id="conflictSummary" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="col-12 d-flex gap-2">
+                        <button class="btn btn-primary" type="submit">Сохранить</button>
+                        <button id="cancelConflictForm" class="btn btn-outline-secondary" type="button">Отмена</button>
+                    </div>
+                </div>
+            </form>
 
             <div id="loadingMessage" class="alert alert-info">
                 Загрузка конфликтов...

@@ -24,12 +24,14 @@
         return;
     }
 
+    loadOperationSides(operationId);
+
     try {
         const operation = await getJson(`${API_BASE_URL}/operation/${operationId}`);
 
         renderOperation(operation);
 
-        const events = await loadOperationEventsStub(operationId);
+        const events = await loadOperationEvents(operationId);
         renderEvents(events);
 
         loadingMessage.classList.add("d-none");
@@ -39,6 +41,20 @@
         console.error(error);
     }
 });
+
+async function loadOperationSides(operationId) {
+    const container = document.getElementById("operationSidesList");
+
+    try {
+        const sides = await getJson(`${API_BASE_URL}/operations/${operationId}/sides`);
+
+        container.innerHTML = sides.length
+            ? sides.map(side => `<span class="badge text-bg-secondary">${escapeHtml(side.title)}</span>`).join("")
+            : '<span class="text-muted">Стороны операции не указаны.</span>';
+    } catch (error) {
+        container.innerHTML = `<span class="text-danger">${escapeHtml(error.message)}</span>`;
+    }
+}
 
 function renderOperation(operation) {
     const title = getFirstValue(operation, ["title", "name"], "Операция без названия");
@@ -64,14 +80,57 @@ function renderOperation(operation) {
     setOptionalBlock("operationResultBlock", "operationResult", result);
 }
 
-async function loadOperationEventsStub(operationId) {
-    // Заглушка.
-    // Когда появится EventsController, эту функцию можно будет заменить на реальный запрос:
-    //
-    // return await getJson(`${API_BASE_URL}/events/by-operation/${operationId}`);
-    //
-    // Пока возвращаем пустой массив, чтобы страница работала без реализованных Event.
+async function loadOperationEvents(operationId) {
+    const response = await getJson(`${API_BASE_URL}/events/by-operation/${operationId}`);
+
+    const events = normalizeEventsResponse(response);
+
+    return events
+        .map(mapBackendEventToOperationEvent)
+        .sort(compareEventsByDate);
+}
+
+function normalizeEventsResponse(response) {
+    if (Array.isArray(response)) {
+        return response;
+    }
+
+    if (Array.isArray(response?.items)) {
+        return response.items;
+    }
+
+    if (Array.isArray(response?.events)) {
+        return response.events;
+    }
+
     return [];
+}
+
+function mapBackendEventToOperationEvent(event) {
+    return {
+        id: event.id,
+        title: getFirstValue(event, ["title", "name"], `Событие #${event.id ?? ""}`.trim()),
+        description: getFirstValue(
+            event,
+            ["text", "description", "summary", "note"],
+            "Описание отсутствует."
+        ),
+        date: getFirstValue(event, ["date", "eventDate", "startDate", "dateEvent"], null),
+        type: getFirstValue(event, ["type", "eventType"], null),
+        sideTitle: getFirstValue(event, ["sideTitle", "warSideTitle", "sideName"], null)
+    };
+}
+
+function compareEventsByDate(firstEvent, secondEvent) {
+    const firstTime = firstEvent.date ? new Date(firstEvent.date).getTime() : Number.MAX_SAFE_INTEGER;
+    const secondTime = secondEvent.date ? new Date(secondEvent.date).getTime() : Number.MAX_SAFE_INTEGER;
+
+    if (firstTime !== secondTime) {
+        return firstTime - secondTime;
+    }
+
+    const idDifference = Number(firstEvent.id ?? 0) - Number(secondEvent.id ?? 0);
+    return idDifference || firstEvent.title.localeCompare(secondEvent.title, "ru");
 }
 
 function renderEvents(events) {
@@ -82,26 +141,30 @@ function renderEvents(events) {
     if (!events || events.length === 0) {
         eventsList.innerHTML = `
             <div class="alert alert-secondary">
-                События для операции пока не реализованы. 
-                Позже здесь будет отображаться хронология событий операции.
+                Для этой операции пока не добавлены события
             </div>
         `;
         return;
     }
 
     events.forEach(event => {
-        const eventTitle = getFirstValue(event, ["title", "name"], "Событие без названия");
-        const eventDescription = getFirstValue(event, ["description", "summary", "note"], "Описание отсутствует.");
-        const eventDate = event.eventDate ?? event.date ?? event.startDate;
+        const eventTitle = event.title || "Событие без названия";
+        const eventDate = event.date;
+        const details = [];
+
+        if (event.sideTitle) details.push(`<div><strong>Сторона:</strong> ${escapeHtml(event.sideTitle)}</div>`);
+        if (event.type) details.push(`<div><strong>Тип:</strong> ${escapeHtml(event.type)}</div>`);
+        if (event.description && event.description !== "Описание отсутствует.") {
+            details.push(`<div><strong>Описание:</strong> ${escapeHtml(event.description)}</div>`);
+        }
 
         const item = document.createElement("div");
         item.className = "card mb-3";
 
         item.innerHTML = `
             <div class="card-body">
-                <h5 class="card-title">${eventTitle}</h5>
-                <p class="card-text text-muted">${eventDate ? formatDate(eventDate) : "Дата не указана"}</p>
-                <p class="card-text">${eventDescription}</p>
+                <h3 class="h5 card-title">${escapeHtml(eventDate ? formatDate(eventDate) : "Дата не указана")} — ${escapeHtml(eventTitle)}</h3>
+                <div class="card-text">${details.join("")}</div>
             </div>
         `;
 

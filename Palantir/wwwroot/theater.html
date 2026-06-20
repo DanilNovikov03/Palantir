@@ -28,7 +28,39 @@
         </section>
 
         <section id="operationsSection" class="d-none">
-            <h2 class="mb-3">Операции</h2>
+            <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+                <h2 class="mb-0">Операции</h2>
+                <button id="addOperationButton" class="btn btn-primary" type="button">Добавить операцию</button>
+            </div>
+
+            <div id="statusMessage" class="alert d-none" role="status"></div>
+
+            <form id="operationForm" class="border rounded p-3 mb-4 d-none">
+                <input id="operationId" type="hidden">
+                <h3 id="operationFormTitle" class="h5 mb-3">Добавить операцию</h3>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="operationTitle" class="form-label">Название</label>
+                        <input id="operationTitle" class="form-control" type="text" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="operationStartDate" class="form-label">Дата начала</label>
+                        <input id="operationStartDate" class="form-control" type="date" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="operationEndDate" class="form-label">Дата окончания</label>
+                        <input id="operationEndDate" class="form-control" type="date" required>
+                    </div>
+                    <div class="col-12">
+                        <label for="operationSummary" class="form-label">Описание</label>
+                        <textarea id="operationSummary" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="col-12 d-flex gap-2">
+                        <button class="btn btn-primary" type="submit">Сохранить</button>
+                        <button id="cancelOperationForm" class="btn btn-outline-secondary" type="button">Отмена</button>
+                    </div>
+                </div>
+            </form>
 
             <div id="operationsList" class="row g-3"></div>
         </section>

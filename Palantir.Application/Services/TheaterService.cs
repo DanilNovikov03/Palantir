@@ -44,9 +44,13 @@
 
         public async Task<TheaterResponse> AddAsync(TheaterRequest theaterRequest)
         {
+            var warExists = await _warRepository.ExistsAsync(theaterRequest.WarId);
+            if (!warExists)
+                throw new KeyNotFoundException("War not found");
 
             var theater = new Theater
             {
+                war_id = theaterRequest.WarId,
                 title = theaterRequest.Title,
                 summary = theaterRequest.Summary
             };
@@ -62,6 +66,11 @@
             if (theater == null)
                 Exception();
 
+            var warExists = await _warRepository.ExistsAsync(request.WarId);
+            if (!warExists)
+                throw new KeyNotFoundException("War not found");
+
+            theater.war_id = request.WarId;
             theater.title = request.Title;
             theater.summary = request.Summary;
 

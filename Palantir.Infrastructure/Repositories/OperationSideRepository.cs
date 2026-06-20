@@ -10,16 +10,22 @@
 
         public async Task<List<OperationSide>> GetByOperationIdAsync(int operationId) =>
             await _dbContext.operation_sides
+                .Include(operationSide => operationSide.war_side)
+                    .ThenInclude(warSide => warSide.side)
                 .Where(op => op.operation_id == operationId)
                 .ToListAsync();
 
         public async Task<List<OperationSide>> GetByWarSideIdAsync(int warSideId) =>
             await _dbContext.operation_sides
+                .Include(operationSide => operationSide.war_side)
+                    .ThenInclude(warSide => warSide.side)
                 .Where(ws => ws.war_side_id == warSideId)
                 .ToListAsync();
 
         public async Task<OperationSide?> GetByIdsAsync(int operationId, int warSideId) =>
             await _dbContext.operation_sides
+                .Include(operationSide => operationSide.war_side)
+                    .ThenInclude(warSide => warSide.side)
                 .FirstOrDefaultAsync(opS => 
                     opS.operation_id == operationId && 
                     opS.war_side_id == warSideId
@@ -27,7 +33,10 @@
 
         public async Task<List<OperationSide>> GetAllAsync() =>
             await _dbContext
-                .operation_sides.ToListAsync<OperationSide>();
+                .operation_sides
+                .Include(operationSide => operationSide.war_side)
+                    .ThenInclude(warSide => warSide.side)
+                .ToListAsync<OperationSide>();
 
         public async Task AddAsync(OperationSide operationSide)
         {

@@ -26,6 +26,22 @@
             return Response(war);
         }
 
+        public async Task<List<MapSideResponse>?> GetSidesAsync(int warId)
+        {
+            if (!await _repository.ExistsAsync(warId))
+                return null;
+
+            var sides = await _repository.GetSidesAsync(warId);
+
+            return sides
+                .Select(warSide => new MapSideResponse(
+                    warSide.war_side_id,
+                    warSide.side_id,
+                    warSide.side.title,
+                    warSide.color_hex))
+                .ToList();
+        }
+
         public async Task<WarResponse> AddAsync(WarRequest warRequest)
         {
             var war = new War

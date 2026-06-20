@@ -7,6 +7,15 @@
         public SideService(ISideRepository repository) =>
             _repository = repository;
 
+        public async Task<List<SideResponse>> GetAllAsync()
+        {
+            var sides = await _repository.GetAllAsync();
+
+            return sides
+                .OrderBy(side => side.title)
+                .Select(Response)
+                .ToList();
+        }
 
         public async Task<SideResponse?> GetByIdAsync(int id)
         {

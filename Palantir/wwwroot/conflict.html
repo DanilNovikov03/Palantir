@@ -23,15 +23,73 @@
         </div>
 
         <section id="conflictDetails" class="d-none mb-5">
-            <h1 id="conflictName"></h1>
+            <div class="d-flex justify-content-between align-items-start gap-3">
+                <h1 id="conflictName"></h1>
+                <button id="editConflictButton" class="btn btn-outline-primary" type="button">Изменить конфликт</button>
+            </div>
 
             <p id="conflictDates" class="text-muted"></p>
 
             <p id="conflictNote"></p>
+
+            <div class="mt-4">
+                <h2 class="h5 mb-2">Участники конфликта</h2>
+                <div id="warSidesList" class="d-flex flex-wrap gap-2" aria-live="polite">
+                    <span class="text-muted">Загрузка сторон...</span>
+                </div>
+            </div>
         </section>
 
+        <div id="statusMessage" class="alert d-none" role="status"></div>
+
+        <form id="conflictForm" class="border rounded p-3 mb-4 d-none">
+            <h2 class="h5 mb-3">Изменить конфликт</h2>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="conflictTitle" class="form-label">Название</label>
+                    <input id="conflictTitle" class="form-control" type="text" required>
+                </div>
+                <div class="col-md-3">
+                    <label for="conflictStartDate" class="form-label">Дата начала</label>
+                    <input id="conflictStartDate" class="form-control" type="date" required>
+                </div>
+                <div class="col-md-3">
+                    <label for="conflictEndDate" class="form-label">Дата окончания</label>
+                    <input id="conflictEndDate" class="form-control" type="date">
+                </div>
+                <div class="col-12">
+                    <label for="conflictSummary" class="form-label">Краткое описание</label>
+                    <textarea id="conflictSummary" class="form-control" rows="3"></textarea>
+                </div>
+                <div class="col-12 d-flex gap-2">
+                    <button class="btn btn-primary" type="submit">Сохранить</button>
+                    <button id="cancelConflictForm" class="btn btn-outline-secondary" type="button">Отмена</button>
+                </div>
+            </div>
+        </form>
+
         <section id="theatersSection" class="d-none">
-            <h2 class="mb-3">Театры военных действий</h2>
+            <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+                <h2 class="mb-0">Театры военных действий</h2>
+                <button id="addTheaterButton" class="btn btn-primary" type="button">Добавить театр</button>
+            </div>
+
+            <form id="theaterForm" class="border rounded p-3 mb-4 d-none">
+                <input id="theaterId" type="hidden">
+                <h3 id="theaterFormTitle" class="h5 mb-3">Добавить театр</h3>
+                <div class="mb-3">
+                    <label for="theaterTitle" class="form-label">Название</label>
+                    <input id="theaterTitle" class="form-control" type="text" required>
+                </div>
+                <div class="mb-3">
+                    <label for="theaterSummary" class="form-label">Описание</label>
+                    <textarea id="theaterSummary" class="form-control" rows="3"></textarea>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary" type="submit">Сохранить</button>
+                    <button id="cancelTheaterForm" class="btn btn-outline-secondary" type="button">Отмена</button>
+                </div>
+            </form>
 
             <div id="theatersList" class="row g-3"></div>
         </section>

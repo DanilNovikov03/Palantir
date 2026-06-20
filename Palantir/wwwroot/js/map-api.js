@@ -28,6 +28,25 @@ export async function fetchControlZonesByWarAndDate(warId, date) {
     return await response.json();
 }
 
+export async function fetchOperationSides(operationId) {
+    return await fetchMapSides(`/api/operations/${encodeURIComponent(operationId)}/sides`, "операции");
+}
+
+export async function fetchWarSides(warId) {
+    return await fetchMapSides(`/api/wars/${encodeURIComponent(warId)}/sides`, "конфликта");
+}
+
+async function fetchMapSides(url, entityName) {
+    const response = await fetch(url);
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Не удалось загрузить стороны ${entityName}: ${response.status}. ${errorText}`);
+    }
+
+    return await response.json();
+}
+
 export async function fetchArmiesByWarAndDate(warId, date) {
     const url = `/api/army/by-war/${encodeURIComponent(warId)}/positions?date=${encodeURIComponent(date)}`;
 

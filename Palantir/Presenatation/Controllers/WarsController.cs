@@ -25,9 +25,22 @@ namespace Palantir.Presenatation.Controllers
                 NotFound() : Ok(war);
         }
 
+        [HttpGet("/api/wars/{warId:int}/sides")]
+        public async Task<ActionResult<List<MapSideResponse>>> GetSides(int warId)
+        {
+            var sides = await _warService.GetSidesAsync(warId);
+
+            return sides is null
+                ? NotFound(new { message = "Конфликт не найден." })
+                : Ok(sides);
+        }
+
         [HttpPost]
         public async Task<ActionResult> Add(WarRequest warRequest)
         {
+            if (warRequest.EndDate is not null && warRequest.StartDate > warRequest.EndDate)
+                return BadRequest(new { message = "Дата начала конфликта не может быть позже даты окончания." });
+
             var response = await _warService.AddAsync(warRequest);
             return CreatedAtAction(
                 nameof(GetById), 
@@ -39,6 +52,9 @@ namespace Palantir.Presenatation.Controllers
         [HttpPut("{id}")]
         public async Task<ActionResult> Update(int id, WarRequest warRequest)
         {
+            if (warRequest.EndDate is not null && warRequest.StartDate > warRequest.EndDate)
+                return BadRequest(new { message = "Дата начала конфликта не может быть позже даты окончания." });
+
             var response = await _warService
                 .UpdateAsync(id, warRequest);
             return response is null ?
@@ -48,8 +64,19 @@ namespace Palantir.Presenatation.Controllers
         [HttpDelete("{id}")]
         public async Task<ActionResult> Delete(int id)
         {
-            await _warService.DeleteAsync(id);
-            return NoContent();
+            try
+            {
+                await _warService.DeleteAsync(id);
+                return NoContent();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { message = "Конфликт не найден." });
+            }
+            catch (DbUpdateException)
+            {
+                return Conflict(new { message = "Нельзя удалить конфликт: сначала удалите связанные театры, события, зоны контроля и стороны." });
+            }
         }
     }
 }

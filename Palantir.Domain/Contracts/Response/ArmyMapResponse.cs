@@ -4,6 +4,7 @@ namespace Palantir.Domain.Contracts.Response
         int Id,
         int WarSideId,
         string? SideTitle,
+        string? ColorHex,
         string Name,
         string? TypeArmy,
         string? Summary,

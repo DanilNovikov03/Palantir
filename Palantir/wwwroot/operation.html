@@ -31,6 +31,13 @@
 
                     <p id="operationDescription" class="lead"></p>
 
+                    <section class="mb-4" aria-labelledby="operationSidesTitle">
+                        <h2 id="operationSidesTitle" class="h5 mb-2">Участники операции</h2>
+                        <div id="operationSidesList" class="d-flex flex-wrap gap-2" aria-live="polite">
+                            <span class="text-muted">Загрузка сторон...</span>
+                        </div>
+                    </section>
+
                     <div id="operationGoalBlock" class="card mb-3 d-none">
                         <div class="card-body">
                             <h5 class="card-title">Цель операции</h5>
@@ -57,12 +64,10 @@
                         <div class="card-body">
                             <h5 class="card-title">Карта операции</h5>
 
-                            <p class="card-text text-muted">
-                                Здесь позже будет переход к карте с отображением событий, линии фронта и других объектов.
-                            </p>
+                            <p class="card-text text-muted">События создаются и размещаются только на карте операции.</p>
 
                             <a id="mapButton" href="/map.html" class="btn btn-primary w-100">
-                                Перейти к карте
+                                Добавить событие на карте
                             </a>
                         </div>
                     </div>

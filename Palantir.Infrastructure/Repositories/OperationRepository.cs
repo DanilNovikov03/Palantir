@@ -13,13 +13,23 @@
 
         public async Task<Operation?> GetByIdAsync(int id) =>
             await _dbContext.operations
+                .Include(operation => operation.theater)
                 .FirstOrDefaultAsync(
                     o => o.operation_id == id
                 );
 
         public async Task<List<Operation>> GetByTheaterIdAsync(int theaterId) =>
             await _dbContext.operations
+                .Include(operation => operation.theater)
                 .Where(operation => operation.theater_id == theaterId)
+                .ToListAsync();
+
+        public async Task<List<WarSide>> GetSidesAsync(int operationId) =>
+            await _dbContext.war_sides
+                .Include(warSide => warSide.side)
+                .Where(warSide => warSide.operation_sides
+                    .Any(operationSide => operationSide.operation_id == operationId))
+                .OrderBy(warSide => warSide.side.title)
                 .ToListAsync();
 
         public async Task AddAsync(Operation operation)

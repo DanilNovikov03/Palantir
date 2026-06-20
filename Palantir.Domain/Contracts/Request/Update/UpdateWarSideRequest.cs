@@ -3,6 +3,7 @@
     public record class UpdateWarSideRequest(
         DateOnly JoinedDate,
         DateOnly? OutDate,
-        string? Note
+        string? Note,
+        string? ColorHex
     );
 }

@@ -23,6 +23,23 @@ namespace Palantir.Application.Services
             return Response(oper);
         }
 
+        public async Task<List<MapSideResponse>?> GetSidesAsync(int operationId)
+        {
+            var operation = await _reposirory.GetByIdAsync(operationId);
+            if (operation == null)
+                return null;
+
+            var sides = await _reposirory.GetSidesAsync(operationId);
+
+            return sides
+                .Select(warSide => new MapSideResponse(
+                    warSide.war_side_id,
+                    warSide.side_id,
+                    warSide.side.title,
+                    warSide.color_hex))
+                .ToList();
+        }
+
         public async Task<List<OperationResponse>?> GetByTheaterIdAsync(int theaterId)
         {
             var theaterExists = await _theaterRepos.ExistsAsync(theaterId);
@@ -39,8 +56,14 @@ namespace Palantir.Application.Services
 
         public async Task<OperationResponse> AddAsync(OperationRequest operRequest)
         {
+            var theater = await _theaterRepos.GetByIdAsync(operRequest.TheaterId);
+            if (theater == null)
+                throw new KeyNotFoundException("Theater not found");
+
             var oper = new Operation
             {
+                theater_id = operRequest.TheaterId,
+                theater = theater,
                 title = operRequest.Title,
                 start_date = operRequest.StartDate,
                 end_date = operRequest.EndDate,
@@ -58,6 +81,12 @@ namespace Palantir.Application.Services
             if (oper == null)
                 Exception();
 
+            var theater = await _theaterRepos.GetByIdAsync(operRequest.TheaterId);
+            if (theater == null)
+                throw new KeyNotFoundException("Theater not found");
+
+            oper.theater_id = operRequest.TheaterId;
+            oper.theater = theater;
             oper.title = operRequest.Title;
             oper.start_date = operRequest.StartDate;
             oper.end_date = operRequest.EndDate;
@@ -81,6 +110,7 @@ namespace Palantir.Application.Services
             new OperationResponse(
                 operation.operation_id,
                 operation.theater_id,
+                operation.theater.war_id,
                 operation.title,
                 operation.start_date,
                 operation.end_date,

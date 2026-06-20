@@ -18,8 +18,18 @@
                 NotFound() : Ok(operation);
         }
 
+        [HttpGet("/api/operations/{operationId:int}/sides")]
+        public async Task<ActionResult<List<MapSideResponse>>> GetSides(int operationId)
+        {
+            var sides = await _operationService.GetSidesAsync(operationId);
+
+            return sides is null
+                ? NotFound(new { message = "Операция не найдена." })
+                : Ok(sides);
+        }
+
         [HttpGet("by-theater/{theaterId:int}")]
-        public async Task<ActionResult<IEnumerable<TheaterResponse>>>
+        public async Task<ActionResult<IEnumerable<OperationResponse>>>
             GetByTheaterId(int theaterId)
         {
             var operations = await _operationService
@@ -31,24 +41,53 @@
         [HttpPost]
         public async Task<ActionResult> Add(OperationRequest operationRequest)
         {
-            var response = await _operationService.AddAsync(operationRequest);
-            return CreatedAtAction(nameof(GetById), new { id = response.Id });
+            if (operationRequest.StartDate > operationRequest.EndDate)
+                return BadRequest(new { message = "Дата начала операции не может быть позже даты окончания." });
+
+            try
+            {
+                var response = await _operationService.AddAsync(operationRequest);
+                return CreatedAtAction(nameof(GetById), new { id = response.Id }, response);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { message = "Театр для операции не найден." });
+            }
         }
 
         [HttpPut("{id:int}")]
         public async Task<ActionResult> Update(int id, OperationRequest operationRequest)
         {
-            var response = await _operationService
-                .UpdateAsync(id, operationRequest);
-            return response is null ?
-                NotFound() : NoContent();
+            if (operationRequest.StartDate > operationRequest.EndDate)
+                return BadRequest(new { message = "Дата начала операции не может быть позже даты окончания." });
+
+            try
+            {
+                await _operationService.UpdateAsync(id, operationRequest);
+                return NoContent();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { message = "Операция или связанный театр не найдены." });
+            }
         }
 
         [HttpDelete("{id:int}")]
         public async Task<ActionResult> Delete(int id)
         {
-            await _operationService.DeleteAsync(id);
-            return NoContent();
+            try
+            {
+                await _operationService.DeleteAsync(id);
+                return NoContent();
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { message = "Операция не найдена." });
+            }
+            catch (DbUpdateException)
+            {
+                return Conflict(new { message = "Нельзя удалить операцию: сначала удалите связанные события и стороны операции." });
+            }
         }
     }
 }

@@ -16,6 +16,13 @@
                     w => w.war_id == id
                 );
 
+        public async Task<List<WarSide>> GetSidesAsync(int warId) =>
+            await _dbContext.war_sides
+                .Where(warSide => warSide.war_id == warId)
+                .Include(warSide => warSide.side)
+                .OrderBy(warSide => warSide.side.title)
+                .ToListAsync();
+
         public async Task AddAsync(War war)
         {
             await _dbContext.wars.AddAsync(war);

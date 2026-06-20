@@ -140,6 +140,7 @@
                 army.army_id,
                 army.war_side_id,
                 army.war_side?.side?.title,
+                army.war_side?.color_hex,
                 army.name_arm,
                 army.type_arm,
                 army.summary,
