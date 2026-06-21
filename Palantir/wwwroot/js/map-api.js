@@ -106,6 +106,29 @@ export async function saveControlZoneToBackend(request) {
     return await response.json().catch(() => null);
 }
 
+export async function updateControlZoneGeometryForDate(zoneId, date, coordinates) {
+    const body = {
+        date,
+        geom: createMultiPolygonGeoJsonFromLeafletCoordinates(coordinates)
+    };
+
+    const response = await fetch(`/api/control-zones/${encodeURIComponent(zoneId)}/geometry-for-date`, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.json().catch(() => null);
+        const message = errorBody?.message ?? `Ошибка сохранения геометрии: ${response.status}.`;
+        throw new Error(message);
+    }
+
+    return await response.json();
+}
+
 export async function saveArmyToBackend(request) {
     const body = {
         warSideId: request.warSideId,

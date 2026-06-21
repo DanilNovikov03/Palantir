@@ -10,6 +10,9 @@
             DateOnly date);
         Task<ControlZoneResponse> AddAsync(CreateControlZoneRequest controlZoneRequest);
         Task<ControlZoneResponse> UpdateAsync(int controlZoneId, UpdateControlZoneRequest controlZoneRequest);
+        Task<ControlZoneGeometryForDateResponse> UpdateGeometryForDateAsync(
+            int controlZoneId,
+            UpdateControlZoneGeometryForDateRequest request);
         Task DeleteAsync(int controlZoneId);
     }
 }

@@ -71,6 +71,41 @@
             return Response(zone);
         }
 
+        public async Task<ControlZoneGeometryForDateResponse> UpdateGeometryForDateAsync(
+            int controlZoneId,
+            UpdateControlZoneGeometryForDateRequest request)
+        {
+            var sourceZone = await _repository.GetByIdAsync(controlZoneId);
+            if (sourceZone == null)
+                throw new KeyNotFoundException("Зона контроля не найдена.");
+
+            ValidateGeometryForDateRequest(request);
+
+            var geometry = (MultiPolygon)request.Geom!.Copy();
+            geometry.SRID = 4326;
+
+            if (sourceZone.date_control == request.Date)
+            {
+                sourceZone.geom = geometry;
+                await _repository.UpdateAsync(sourceZone);
+
+                return new ControlZoneGeometryForDateResponse(Response(sourceZone), false);
+            }
+
+            var newZone = new ControlZone
+            {
+                war_id = sourceZone.war_id,
+                war_side_id = sourceZone.war_side_id,
+                date_control = request.Date,
+                precision_control = sourceZone.precision_control,
+                geom = geometry
+            };
+
+            await _repository.AddAsync(newZone);
+
+            return new ControlZoneGeometryForDateResponse(Response(newZone), true);
+        }
+
         public async Task DeleteAsync(int controlZoneId)
         {
             var zone = await _repository
@@ -90,6 +125,25 @@
                 zone.precision_control,
                 zone.geom
             );
+
+        private static void ValidateGeometryForDateRequest(UpdateControlZoneGeometryForDateRequest request)
+        {
+            if (request.Date == default)
+                throw new ArgumentException("Передана некорректная дата.");
+
+            if (request.Geom == null || request.Geom.IsEmpty)
+                throw new ArgumentException("Некорректная геометрия зоны контроля.");
+
+            for (var index = 0; index < request.Geom.NumGeometries; index++)
+            {
+                var polygon = (Polygon)request.Geom.GetGeometryN(index);
+                if (polygon.ExteriorRing.NumPoints < 4)
+                    throw new ArgumentException("Для зоны контроля нужно минимум 3 точки.");
+            }
+
+            if (!request.Geom.IsValid)
+                throw new ArgumentException("Некорректная геометрия зоны контроля.");
+        }
 
         private void Exception() =>
             throw new KeyNotFoundException("control zone not found");

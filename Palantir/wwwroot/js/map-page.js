@@ -17,6 +17,7 @@ import {
     fetchArmiesByWarAndDate,
     fetchEventsByWarAndDate,
     saveControlZoneToBackend,
+    updateControlZoneGeometryForDate,
     saveArmyToBackend,
     saveEventToBackend,
     updateArmyPositionOnBackend,
@@ -40,10 +41,12 @@ const MAP_ACTION_MODES = {
     ARMY: "army",
     EVENT: "event",
     MOVE_ARMY: "move-army",
-    MOVE_EVENT: "move-event"
+    MOVE_EVENT: "move-event",
+    EDIT_CONTROL_ZONE: "edit-control-zone"
 };
 const MAP_ACTIVE_MODE_CLASS = "map-active-mode";
 const MAP_MOVE_MODE_CLASS = "map-move-mode";
+const MAP_EDIT_CONTROL_ZONE_CLASS = "map-edit-control-zone";
 
 const DEFAULT_CONTROL_ZONE_PRECISION = "Approximate";
 
@@ -68,6 +71,15 @@ const pageState = {
         draftLine: null,
         draftPolygon: null,
         nextTempZoneId: 1000
+    },
+
+    controlZoneEditing: {
+        zone: null,
+        originalCoordinates: [],
+        coordinates: [],
+        vertexMarkers: [],
+        polygon: null,
+        isSaving: false
     }
 };
 
@@ -105,6 +117,10 @@ const elements = {
     controlZoneSideSelect: null,
     finishDrawingBtn: null,
     clearDraftBtn: null,
+    editControlZoneModeControls: null,
+    editControlZoneWarning: null,
+    finishControlZoneEditingBtn: null,
+    cancelControlZoneEditingBtn: null,
     mapObjectForm: null,
     mapObjectTitleLabel: null,
     mapObjectTitleInput: null,
@@ -149,7 +165,8 @@ const mapLayers = {
 
     // Отдельный слой для черновика создаваемой зоны.
     // Он не сохраняется в БД и нужен только для рисования.
-    controlZoneDraft: L.layerGroup().addTo(map)
+    controlZoneDraft: L.layerGroup().addTo(map),
+    controlZoneEdit: L.layerGroup().addTo(map)
 };
 
 init();
@@ -239,6 +256,8 @@ function setupControlZoneDrawing() {
     elements.cancelMapActionBtn.addEventListener("click", cancelActiveMapMode);
     elements.finishDrawingBtn.addEventListener("click", finishControlZoneDrawing);
     elements.clearDraftBtn.addEventListener("click", clearControlZoneDraft);
+    elements.finishControlZoneEditingBtn.addEventListener("click", finishControlZoneEditing);
+    elements.cancelControlZoneEditingBtn.addEventListener("click", cancelControlZoneEditing);
     elements.mapObjectForm.addEventListener("submit", saveMapObjectDraft);
     elements.cancelMapObjectFormBtn.addEventListener("click", clearPendingPointForm);
 
@@ -249,6 +268,20 @@ function setupControlZoneDrawing() {
 
 function setupMapObjectPopupActions() {
     document.addEventListener("click", async function (event) {
+        const editControlZoneButton = event.target.closest("[data-edit-control-zone]");
+
+        if (editControlZoneButton) {
+            const controlZoneId = Number(editControlZoneButton.dataset.objectId);
+
+            if (!Number.isInteger(controlZoneId)) {
+                setStatus("Не удалось определить зону контроля для редактирования.", "warning");
+                return;
+            }
+
+            startControlZoneEditing(controlZoneId);
+            return;
+        }
+
         const deleteButton = event.target.closest("[data-delete-map-object]");
 
         if (deleteButton) {
@@ -416,6 +449,10 @@ function createMapActionsPanel() {
     elements.controlZoneSideSelect = panel.querySelector("#controlZoneSideSelect");
     elements.finishDrawingBtn = panel.querySelector("#finishControlZoneDrawingBtn");
     elements.clearDraftBtn = panel.querySelector("#clearControlZoneDraftBtn");
+    elements.editControlZoneModeControls = panel.querySelector("#editControlZoneModeControls");
+    elements.editControlZoneWarning = panel.querySelector("#editControlZoneWarning");
+    elements.finishControlZoneEditingBtn = panel.querySelector("#finishControlZoneEditingBtn");
+    elements.cancelControlZoneEditingBtn = panel.querySelector("#cancelControlZoneEditingBtn");
     elements.mapObjectForm = panel.querySelector("#mapObjectForm");
     elements.mapObjectTitleLabel = panel.querySelector("#mapObjectTitleLabel");
     elements.mapObjectTitleInput = panel.querySelector("#mapObjectTitleInput");
@@ -494,6 +531,11 @@ function activateMapMode(mode) {
 }
 
 function cancelActiveMapMode() {
+    if (pageState.activeMode === MAP_ACTION_MODES.EDIT_CONTROL_ZONE) {
+        cancelControlZoneEditing();
+        return;
+    }
+
     clearTransientEditingState();
     pageState.activeMode = null;
     updateMapInteractionClass();
@@ -509,6 +551,8 @@ function clearTransientEditingState() {
     pageState.movingObject = null;
     map.getContainer().classList.remove(MAP_ACTIVE_MODE_CLASS, MAP_MOVE_MODE_CLASS);
     clearControlZoneDraft(false);
+    clearControlZoneEditingState();
+    setMapDateControlsDisabled(false);
     hideMapObjectForm();
 }
 
@@ -521,6 +565,169 @@ function updateMapInteractionClass() {
 
     mapContainer.classList.toggle(MAP_ACTIVE_MODE_CLASS, hasActiveMode);
     mapContainer.classList.toggle(MAP_MOVE_MODE_CLASS, isMoveMode);
+    mapContainer.classList.toggle(
+        MAP_EDIT_CONTROL_ZONE_CLASS,
+        pageState.activeMode === MAP_ACTION_MODES.EDIT_CONTROL_ZONE
+    );
+}
+
+function startControlZoneEditing(controlZoneId) {
+    const zone = findMapObject("controlZone", controlZoneId);
+    const coordinates = getEditableControlZoneCoordinates(zone?.coordinates);
+
+    if (!zone || coordinates.length < 3) {
+        setStatus("Зона контроля не содержит достаточно точек для редактирования.", "warning");
+        return;
+    }
+
+    clearTransientEditingState();
+    map.closePopup();
+
+    pageState.activeMode = MAP_ACTION_MODES.EDIT_CONTROL_ZONE;
+    pageState.controlZoneEditing.zone = zone;
+    pageState.controlZoneEditing.originalCoordinates = cloneControlZoneCoordinates(coordinates);
+    pageState.controlZoneEditing.coordinates = cloneControlZoneCoordinates(coordinates);
+
+    renderEditableControlZone();
+    setMapDateControlsDisabled(true);
+    updateMapInteractionClass();
+    updateMapActionsPanel();
+
+    const isNewDate = normalizeDate(zone.dateControl) !== getCurrentMapDate();
+    setStatus(
+        isNewDate
+            ? "Переместите точки зоны. Изменения будут сохранены как новый снимок на выбранную дату."
+            : "Переместите точки зоны контроля. Нажмите «Готово», чтобы сохранить изменения.",
+        isNewDate ? "warning" : "info"
+    );
+}
+
+function renderEditableControlZone() {
+    const editing = pageState.controlZoneEditing;
+    const style = getControlZoneStyle(editing.zone?.side);
+
+    mapLayers.controlZoneEdit.clearLayers();
+    editing.vertexMarkers = [];
+    editing.polygon = L.polygon(editing.coordinates, {
+        ...style,
+        fillOpacity: 0.15,
+        weight: 3,
+        dashArray: "6 5"
+    }).addTo(mapLayers.controlZoneEdit);
+
+    editing.coordinates.forEach((coordinate, index) => {
+        const marker = L.marker(coordinate, {
+            draggable: true,
+            keyboard: false,
+            autoPan: true,
+            icon: L.divIcon({
+                className: "control-zone-edit-marker",
+                html: '<div class="control-zone-edit-handle"></div>',
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            })
+        });
+
+        marker.on("drag", event => {
+            const latLng = event.target.getLatLng();
+            editing.coordinates[index] = [
+                Number(latLng.lat.toFixed(6)),
+                Number(latLng.lng.toFixed(6))
+            ];
+            editing.polygon.setLatLngs(editing.coordinates);
+        });
+
+        marker.addTo(mapLayers.controlZoneEdit);
+        editing.vertexMarkers.push(marker);
+    });
+}
+
+async function finishControlZoneEditing() {
+    const editing = pageState.controlZoneEditing;
+
+    if (!editing.zone || editing.coordinates.length < 3 || editing.isSaving) {
+        setStatus("Для зоны контроля нужно минимум 3 точки.", "warning");
+        return;
+    }
+
+    try {
+        editing.isSaving = true;
+        elements.finishControlZoneEditingBtn.disabled = true;
+        setStatus("Сохраняю изменения зоны контроля...", "info");
+
+        const response = await updateControlZoneGeometryForDate(
+            editing.zone.id,
+            getCurrentMapDate(),
+            editing.coordinates
+        );
+
+        const isNewVersion = Boolean(response?.isNewVersion);
+        completeControlZoneEditing();
+        await renderTemporaryMapObjects();
+        setStatus(
+            isNewVersion
+                ? "Создана новая зона контроля на выбранную дату."
+                : "Зона контроля обновлена.",
+            "success"
+        );
+    } catch (error) {
+        console.error(error);
+        editing.isSaving = false;
+        elements.finishControlZoneEditingBtn.disabled = false;
+        setStatus(error.message || "Не удалось сохранить изменения зоны контроля.", "danger");
+    }
+}
+
+function cancelControlZoneEditing() {
+    completeControlZoneEditing();
+    setStatus("Редактирование зоны контроля отменено.", "secondary");
+}
+
+function completeControlZoneEditing() {
+    clearControlZoneEditingState();
+    pageState.activeMode = null;
+    setMapDateControlsDisabled(false);
+    updateMapInteractionClass();
+    updateMapActionsPanel();
+}
+
+function clearControlZoneEditingState() {
+    const editing = pageState.controlZoneEditing;
+
+    mapLayers.controlZoneEdit.clearLayers();
+    editing.zone = null;
+    editing.originalCoordinates = [];
+    editing.coordinates = [];
+    editing.vertexMarkers = [];
+    editing.polygon = null;
+    editing.isSaving = false;
+
+    if (elements.finishControlZoneEditingBtn) {
+        elements.finishControlZoneEditingBtn.disabled = false;
+    }
+}
+
+function setMapDateControlsDisabled(disabled) {
+    if (elements.mapDateInput) elements.mapDateInput.disabled = disabled;
+    if (elements.applyDateBtn) elements.applyDateBtn.disabled = disabled;
+}
+
+function getEditableControlZoneCoordinates(coordinates) {
+    const result = cloneControlZoneCoordinates(coordinates ?? []);
+
+    if (result.length > 1 && areSameCoordinates(result[0], result[result.length - 1])) {
+        result.pop();
+    }
+
+    return result;
+}
+
+function cloneControlZoneCoordinates(coordinates) {
+    return coordinates.map(point => [Number(point[0]), Number(point[1])]);
+}
+
+function areSameCoordinates(first, second) {
+    return first?.[0] === second?.[0] && first?.[1] === second?.[1];
 }
 
 function handleMapClickForActiveMode(event) {
@@ -1089,12 +1296,26 @@ function updateMapActionsPanel() {
     elements.actionModePanel.hidden = !hasActiveMode;
     elements.cancelMapActionBtn.hidden = !hasActiveMode;
     elements.controlZoneModeControls.hidden = pageState.activeMode !== MAP_ACTION_MODES.CONTROL_ZONE;
+    elements.editControlZoneModeControls.hidden = pageState.activeMode !== MAP_ACTION_MODES.EDIT_CONTROL_ZONE;
     elements.finishDrawingBtn.disabled = drawing.coordinates.length < 3;
     elements.clearDraftBtn.disabled = drawing.coordinates.length === 0;
 
     elements.addControlZoneModeBtn.classList.toggle("is-active", pageState.activeMode === MAP_ACTION_MODES.CONTROL_ZONE);
     elements.addArmyModeBtn.classList.toggle("is-active", pageState.activeMode === MAP_ACTION_MODES.ARMY);
     elements.addEventModeBtn.classList.toggle("is-active", pageState.activeMode === MAP_ACTION_MODES.EVENT);
+
+    if (pageState.activeMode === MAP_ACTION_MODES.EDIT_CONTROL_ZONE) {
+        const zoneDate = normalizeDate(pageState.controlZoneEditing.zone?.dateControl);
+        const isNewDate = zoneDate !== getCurrentMapDate();
+
+        elements.actionHint.textContent = "Переместите точки зоны контроля. Нажмите «Готово», чтобы сохранить изменения.";
+        elements.editControlZoneWarning.hidden = !isNewDate;
+        elements.editControlZoneWarning.textContent = isNewDate
+            ? "Изменения будут сохранены как новая зона контроля на выбранную дату. Исходная зона останется без изменений."
+            : "";
+        elements.mapObjectForm.hidden = true;
+        return;
+    }
 
     if (pageState.activeMode === MAP_ACTION_MODES.CONTROL_ZONE) {
         elements.actionHint.textContent = `Выберите точки зоны контроля. Точек: ${drawing.coordinates.length}.`;
@@ -1414,10 +1635,18 @@ async function renderTemporaryMapObjects() {
                 "secondary"
             );
         } else {
-            setStatus(
-                `Зоны контроля из БД загружены: ${zones.length}. Дата: ${formatDate(date)}.`,
-                "success"
-            );
+            const fallbackZones = zones.filter(zone => normalizeDate(zone.dateControl) !== date);
+            const fallbackSideIds = new Set(fallbackZones.map(zone => zone.warSideId));
+            const fallbackDates = [...new Set(fallbackZones
+                .map(zone => normalizeDate(zone.dateControl))
+                .filter(Boolean))]
+                .sort()
+                .map(formatDate);
+
+            setStatus(fallbackZones.length
+                ? `Зоны контроля загружены: ${zones.length}. Для сторон с более ранними снимками: ${fallbackSideIds.size}; даты: ${fallbackDates.join(", ")}.`
+                : `Зоны контроля из БД загружены: ${zones.length}. Дата: ${formatDate(date)}.`,
+            fallbackZones.length ? "info" : "success");
         }
     } catch (error) {
         console.error("Не удалось загрузить зоны контроля из БД:", error);
@@ -1503,6 +1732,7 @@ function clearMapLayers() {
     mapLayers.controlZones.clearLayers();
     mapLayers.armies.clearLayers();
     mapLayers.controlZoneDraft.clearLayers();
+    mapLayers.controlZoneEdit.clearLayers();
 
     pageState.controlZoneDrawing.coordinates = [];
     pageState.controlZoneDrawing.pointMarkers = [];
@@ -1544,14 +1774,21 @@ function createControlZonePopupHtml(zone) {
         <strong>${escapeHtml(zone.title)}</strong><br>
         <span>${escapeHtml(zone.description)}</span><br>
         <span>Количество точек: ${zone.coordinates.length}</span>
-        ${createObjectActionButtonsHtml("controlZone", zone.id, false)}
+        ${createObjectActionButtonsHtml("controlZone", zone.id, false, true)}
     `;
 }
 
-function createObjectActionButtonsHtml(objectType, objectId, canMove) {
+function createObjectActionButtonsHtml(objectType, objectId, canMove, canEdit = false) {
     return `
         <div class="d-flex gap-2 mt-2">
             ${canMove ? createMoveButtonHtml(objectType, objectId) : ""}
+            ${canEdit ? `
+                <button class="btn btn-sm btn-outline-primary"
+                        type="button"
+                        data-edit-control-zone
+                        data-object-id="${escapeHtml(String(objectId))}">
+                    Изменить
+                </button>` : ""}
             <button class="btn btn-sm btn-outline-danger"
                     type="button"
                     data-delete-map-object

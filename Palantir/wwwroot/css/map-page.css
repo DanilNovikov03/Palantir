@@ -173,6 +173,24 @@ body {
 #map.map-active-mode .leaflet-popup {
     pointer-events: none;
 }
+
+#map.map-edit-control-zone .control-zone-edit-marker {
+    pointer-events: auto;
+    cursor: grab;
+}
+
+#map.map-edit-control-zone .control-zone-edit-marker:active {
+    cursor: grabbing;
+}
+
+.control-zone-edit-handle {
+    width: 16px;
+    height: 16px;
+    border: 3px solid #ffffff;
+    border-radius: 50%;
+    background: #198754;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.45);
+}
 /*
 Потом может сделаю это для телефонов, а так вроде не надо пока
 @media (max-width: 900px) {

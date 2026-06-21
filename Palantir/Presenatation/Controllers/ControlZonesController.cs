@@ -56,6 +56,26 @@
                 NotFound() : NoContent();
         }
 
+        [HttpPut("{id:int}/geometry-for-date")]
+        public async Task<ActionResult<ControlZoneGeometryForDateResponse>> UpdateGeometryForDate(
+            int id,
+            UpdateControlZoneGeometryForDateRequest request)
+        {
+            try
+            {
+                var response = await _zoneService.UpdateGeometryForDateAsync(id, request);
+                return Ok(response);
+            }
+            catch (KeyNotFoundException)
+            {
+                return NotFound(new { message = "Зона контроля не найдена." });
+            }
+            catch (ArgumentException exception)
+            {
+                return BadRequest(new { message = exception.Message });
+            }
+        }
+
         [HttpDelete("{id:int}")]
         public async Task<ActionResult> Delete(int id)
         {
