@@ -5,12 +5,19 @@ namespace Palantir.Application.Services
     {
         private readonly IOperationRepository _reposirory;
         private readonly ITheaterRepository _theaterRepos;
+        private readonly IWarSideRepository _warSideRepository;
+        private readonly IOperationSideRepository _operationSideRepository;
 
         public OperationService(
-            IOperationRepository repository, ITheaterRepository theaterRepos)
+            IOperationRepository repository,
+            ITheaterRepository theaterRepos,
+            IWarSideRepository warSideRepository,
+            IOperationSideRepository operationSideRepository)
         {
             _reposirory = repository;
             _theaterRepos = theaterRepos;
+            _warSideRepository = warSideRepository;
+            _operationSideRepository = operationSideRepository;
         }
 
         public async Task<OperationResponse?> GetByIdAsync(int id)
@@ -23,7 +30,7 @@ namespace Palantir.Application.Services
             return Response(oper);
         }
 
-        public async Task<List<MapSideResponse>?> GetSidesAsync(int operationId)
+        public async Task<List<OperationMapSideResponse>?> GetSidesAsync(int operationId)
         {
             var operation = await _reposirory.GetByIdAsync(operationId);
             if (operation == null)
@@ -32,12 +39,54 @@ namespace Palantir.Application.Services
             var sides = await _reposirory.GetSidesAsync(operationId);
 
             return sides
-                .Select(warSide => new MapSideResponse(
+                .Select(warSide => new OperationMapSideResponse(
+                    warSide.war_side_id,
                     warSide.war_side_id,
                     warSide.side_id,
                     warSide.side.title,
                     warSide.color_hex))
                 .ToList();
+        }
+
+        public async Task<OperationMapSideResponse> AddSideAsync(int operationId, AddOperationSideRequest request)
+        {
+            var operation = await _reposirory.GetByIdAsync(operationId);
+            if (operation == null)
+                throw new KeyNotFoundException("Операция не найдена.");
+
+            var warSide = await _warSideRepository.GetByIdAsync(request.WarSideId);
+            if (warSide == null)
+                throw new KeyNotFoundException("Сторона конфликта не найдена.");
+
+            if (warSide.war_id != operation.theater.war_id)
+                throw new InvalidOperationException("Эта сторона не относится к конфликту текущей операции.");
+
+            if (await _operationSideRepository.GetByIdsAsync(operationId, request.WarSideId) != null)
+                throw new InvalidOperationException("Эта сторона уже добавлена к операции.");
+
+            await _operationSideRepository.AddAsync(new OperationSide
+            {
+                operation_id = operationId,
+                war_side_id = warSide.war_side_id
+            });
+
+            return new OperationMapSideResponse(
+                warSide.war_side_id,
+                warSide.war_side_id,
+                warSide.side_id,
+                warSide.side.title,
+                warSide.color_hex);
+        }
+
+        public async Task DeleteSideAsync(int operationId, int warSideId)
+        {
+            if (await _reposirory.GetByIdAsync(operationId) == null)
+                throw new KeyNotFoundException("Операция не найдена.");
+
+            if (await _operationSideRepository.GetByIdsAsync(operationId, warSideId) == null)
+                throw new KeyNotFoundException("Сторона операции не найдена.");
+
+            await _operationSideRepository.DeleteAsync(operationId, warSideId);
         }
 
         public async Task<List<OperationResponse>?> GetByTheaterIdAsync(int theaterId)

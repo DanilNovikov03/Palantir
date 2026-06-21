@@ -19,13 +19,46 @@
         }
 
         [HttpGet("/api/operations/{operationId:int}/sides")]
-        public async Task<ActionResult<List<MapSideResponse>>> GetSides(int operationId)
+        public async Task<ActionResult<List<OperationMapSideResponse>>> GetSides(int operationId)
         {
             var sides = await _operationService.GetSidesAsync(operationId);
 
             return sides is null
                 ? NotFound(new { message = "Операция не найдена." })
                 : Ok(sides);
+        }
+
+        [HttpPost("/api/operations/{operationId:int}/sides")]
+        public async Task<ActionResult<OperationMapSideResponse>> AddSide(int operationId, AddOperationSideRequest request)
+        {
+            try
+            {
+                var response = await _operationService.AddSideAsync(operationId, request);
+                return Created($"/api/operations/{operationId}/sides/{response.WarSideId}", response);
+            }
+            catch (KeyNotFoundException exception)
+            {
+                return NotFound(new { message = exception.Message });
+            }
+            catch (InvalidOperationException exception)
+            {
+                return BadRequest(new { message = exception.Message });
+            }
+        }
+
+        [HttpDelete("/api/operations/{operationId:int}/sides/{operationSideId:int}")]
+        public async Task<ActionResult> DeleteSide(int operationId, int operationSideId)
+        {
+            try
+            {
+                // operation_sides uses (operation_id, war_side_id) as its composite key.
+                await _operationService.DeleteSideAsync(operationId, operationSideId);
+                return NoContent();
+            }
+            catch (KeyNotFoundException exception)
+            {
+                return NotFound(new { message = exception.Message });
+            }
         }
 
         [HttpGet("by-theater/{theaterId:int}")]

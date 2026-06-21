@@ -35,6 +35,46 @@ namespace Palantir.Presenatation.Controllers
                 : Ok(sides);
         }
 
+        [HttpPost("/api/wars/{warId:int}/sides")]
+        public async Task<ActionResult<MapSideResponse>> AddSide(int warId, AddWarSideRequest request)
+        {
+            try
+            {
+                var response = await _warService.AddSideAsync(warId, request);
+                return Created($"/api/wars/{warId}/sides/{response.WarSideId}", response);
+            }
+            catch (KeyNotFoundException exception)
+            {
+                return NotFound(new { message = exception.Message });
+            }
+            catch (InvalidOperationException exception)
+            {
+                return BadRequest(new { message = exception.Message });
+            }
+        }
+
+        [HttpDelete("/api/wars/{warId:int}/sides/{warSideId:int}")]
+        public async Task<ActionResult> DeleteSide(int warId, int warSideId)
+        {
+            try
+            {
+                await _warService.DeleteSideAsync(warId, warSideId);
+                return NoContent();
+            }
+            catch (KeyNotFoundException exception)
+            {
+                return NotFound(new { message = exception.Message });
+            }
+            catch (InvalidOperationException exception)
+            {
+                return BadRequest(new { message = exception.Message });
+            }
+            catch (DbUpdateException)
+            {
+                return BadRequest(new { message = "Нельзя удалить сторону конфликта, пока она используется объектами карты." });
+            }
+        }
+
         [HttpPost]
         public async Task<ActionResult> Add(WarRequest warRequest)
         {

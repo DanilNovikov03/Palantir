@@ -9,6 +9,11 @@ document.addEventListener("DOMContentLoaded", () => {
         dates: document.getElementById("conflictDates"),
         note: document.getElementById("conflictNote"),
         warSidesList: document.getElementById("warSidesList"),
+        addWarSide: document.getElementById("addWarSideButton"),
+        warSideForm: document.getElementById("warSideForm"),
+        warSideSelect: document.getElementById("warSideSelect"),
+        warSideColor: document.getElementById("warSideColor"),
+        cancelWarSide: document.getElementById("cancelWarSideForm"),
         editConflict: document.getElementById("editConflictButton"),
         conflictForm: document.getElementById("conflictForm"),
         conflictTitle: document.getElementById("conflictTitle"),
@@ -29,6 +34,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let conflict = null;
     let theaters = [];
+    let warSides = [];
+    let sidesCatalog = [];
 
     if (!Number.isInteger(warId) || warId <= 0) {
         showFatalError("Не передан идентификатор конфликта.");
@@ -42,19 +49,79 @@ document.addEventListener("DOMContentLoaded", () => {
     elements.cancelTheater.addEventListener("click", closeTheaterForm);
     elements.theaterForm.addEventListener("submit", saveTheater);
     elements.theatersList.addEventListener("click", handleTheaterAction);
+    elements.addWarSide.addEventListener("click", openWarSideForm);
+    elements.cancelWarSide.addEventListener("click", closeWarSideForm);
+    elements.warSideForm.addEventListener("submit", saveWarSide);
+    elements.warSidesList.addEventListener("click", handleWarSideAction);
 
     loadPage();
     loadWarSides();
 
     async function loadWarSides() {
         try {
-            const sides = await getJson(`${API_BASE_URL}/wars/${warId}/sides`);
+            warSides = await getJson(`${API_BASE_URL}/wars/${warId}/sides`);
 
-            elements.warSidesList.innerHTML = sides.length
-                ? sides.map(side => `<span class="badge text-bg-secondary">${escapeHtml(side.title)}</span>`).join("")
+            elements.warSidesList.innerHTML = warSides.length
+                ? warSides.map(side => `
+                    <span class="badge d-inline-flex align-items-center gap-2" style="background-color:${safeSideColor(side.colorHex)}">
+                        ${escapeHtml(side.title)}
+                        <button class="btn-close btn-close-white" type="button" aria-label="Удалить ${escapeHtml(side.title)}" data-war-side-id="${side.warSideId}"></button>
+                    </span>`).join("")
                 : '<span class="text-muted">Стороны конфликта не указаны.</span>';
         } catch (error) {
             elements.warSidesList.innerHTML = `<span class="text-danger">${escapeHtml(error.message)}</span>`;
+        }
+    }
+
+    async function openWarSideForm() {
+        try {
+            sidesCatalog = sidesCatalog.length ? sidesCatalog : await getJson(`${API_BASE_URL}/sides`);
+            const usedSideIds = new Set(warSides.map(side => side.sideId));
+            const availableSides = sidesCatalog.filter(side => !usedSideIds.has(side.id));
+
+            elements.warSideSelect.innerHTML = availableSides.length
+                ? availableSides.map(side => `<option value="${side.id}">${escapeHtml(side.title)}</option>`).join("")
+                : '<option value="">Все стороны уже добавлены</option>';
+            elements.warSideSelect.disabled = !availableSides.length;
+            elements.warSideForm.querySelector('[type="submit"]').disabled = !availableSides.length;
+            elements.warSideColor.value = "#6c757d";
+            elements.warSideForm.classList.remove("d-none");
+            if (availableSides.length) elements.warSideSelect.focus();
+        } catch (error) {
+            showStatus(error.message, "danger");
+        }
+    }
+
+    function closeWarSideForm() {
+        elements.warSideForm.classList.add("d-none");
+        elements.warSideForm.reset();
+    }
+
+    async function saveWarSide(event) {
+        event.preventDefault();
+        try {
+            await postJson(`${API_BASE_URL}/wars/${warId}/sides`, {
+                sideId: Number(elements.warSideSelect.value),
+                colorHex: elements.warSideColor.value
+            });
+            closeWarSideForm();
+            showStatus("Сторона добавлена к конфликту.", "success");
+            await loadWarSides();
+        } catch (error) {
+            showStatus(error.message, "danger");
+        }
+    }
+
+    async function handleWarSideAction(event) {
+        const button = event.target.closest("[data-war-side-id]");
+        if (!button || !window.confirm("Удалить сторону из этого конфликта?")) return;
+
+        try {
+            await deleteJson(`${API_BASE_URL}/wars/${warId}/sides/${button.dataset.warSideId}`);
+            showStatus("Сторона удалена из конфликта.", "success");
+            await loadWarSides();
+        } catch (error) {
+            showStatus(error.message, "danger");
         }
     }
 
@@ -210,6 +277,10 @@ document.addEventListener("DOMContentLoaded", () => {
         elements.error.classList.remove("d-none");
     }
 });
+
+function safeSideColor(colorHex) {
+    return /^#[0-9a-f]{6}$/i.test(colorHex ?? "") ? colorHex : "#6c757d";
+}
 
 function formatDates(startDate, endDate) {
     if (!endDate) return `Начало: ${formatDate(startDate)}`;

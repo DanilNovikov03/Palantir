@@ -32,10 +32,22 @@
                     <p id="operationDescription" class="lead"></p>
 
                     <section class="mb-4" aria-labelledby="operationSidesTitle">
-                        <h2 id="operationSidesTitle" class="h5 mb-2">Участники операции</h2>
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                            <h2 id="operationSidesTitle" class="h5 mb-0">Участники операции</h2>
+                            <button id="addOperationSideButton" class="btn btn-sm btn-outline-primary" type="button">Добавить сторону операции</button>
+                        </div>
                         <div id="operationSidesList" class="d-flex flex-wrap gap-2" aria-live="polite">
                             <span class="text-muted">Загрузка сторон...</span>
                         </div>
+                        <form id="operationSideForm" class="border rounded p-3 mt-3 d-none">
+                            <label for="operationSideSelect" class="form-label">Сторона конфликта</label>
+                            <select id="operationSideSelect" class="form-select mb-3" required></select>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-primary" type="submit">Сохранить</button>
+                                <button id="cancelOperationSideForm" class="btn btn-outline-secondary" type="button">Отмена</button>
+                            </div>
+                        </form>
+                        <div id="operationSidesStatus" class="alert d-none mt-3 mb-0" role="status"></div>
                     </section>
 
                     <div id="operationGoalBlock" class="card mb-3 d-none">

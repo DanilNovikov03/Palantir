@@ -1,7 +1,7 @@
 ﻿document.addEventListener("DOMContentLoaded", async () => {
     const params = new URLSearchParams(window.location.search);
 
-    const warId = params.get("warId");
+    let warId = params.get("warId");
     const theaterId = params.get("theaterId");
     const operationId = params.get("operationId");
 
@@ -24,14 +24,17 @@
         return;
     }
 
-    loadOperationSides(operationId);
-
     try {
         const operation = await getJson(`${API_BASE_URL}/operation/${operationId}`);
+        warId = String(operation.warId ?? warId ?? "");
 
         renderOperation(operation);
+        setupOperationSides(operationId, warId);
 
-        const events = await loadOperationEvents(operationId);
+        const [events] = await Promise.all([
+            loadOperationEvents(operationId),
+            loadOperationSides(operationId)
+        ]);
         renderEvents(events);
 
         loadingMessage.classList.add("d-none");
@@ -42,18 +45,98 @@
     }
 });
 
+let operationSides = [];
+let conflictSides = [];
+
+function setupOperationSides(operationId, warId) {
+    const addButton = document.getElementById("addOperationSideButton");
+    const form = document.getElementById("operationSideForm");
+    const cancelButton = document.getElementById("cancelOperationSideForm");
+    const list = document.getElementById("operationSidesList");
+
+    addButton.addEventListener("click", () => openOperationSideForm(warId));
+    cancelButton.addEventListener("click", () => form.classList.add("d-none"));
+    form.addEventListener("submit", event => saveOperationSide(event, operationId));
+    list.addEventListener("click", event => deleteOperationSide(event, operationId));
+}
+
 async function loadOperationSides(operationId) {
     const container = document.getElementById("operationSidesList");
 
     try {
-        const sides = await getJson(`${API_BASE_URL}/operations/${operationId}/sides`);
+        operationSides = await getJson(`${API_BASE_URL}/operations/${operationId}/sides`);
 
-        container.innerHTML = sides.length
-            ? sides.map(side => `<span class="badge text-bg-secondary">${escapeHtml(side.title)}</span>`).join("")
+        container.innerHTML = operationSides.length
+            ? operationSides.map(side => `
+                <span class="badge d-inline-flex align-items-center gap-2" style="background-color:${safeOperationSideColor(side.colorHex)}">
+                    ${escapeHtml(side.title)}
+                    <button class="btn-close btn-close-white" type="button" aria-label="Удалить ${escapeHtml(side.title)}" data-operation-side-id="${side.operationSideId}"></button>
+                </span>`).join("")
             : '<span class="text-muted">Стороны операции не указаны.</span>';
     } catch (error) {
         container.innerHTML = `<span class="text-danger">${escapeHtml(error.message)}</span>`;
     }
+}
+
+async function openOperationSideForm(warId) {
+    const form = document.getElementById("operationSideForm");
+    const select = document.getElementById("operationSideSelect");
+
+    try {
+        conflictSides = await getJson(`${API_BASE_URL}/wars/${warId}/sides`);
+        const usedIds = new Set(operationSides.map(side => side.warSideId));
+        const availableSides = conflictSides.filter(side => !usedIds.has(side.warSideId));
+
+        select.innerHTML = availableSides.length
+            ? availableSides.map(side => `<option value="${side.warSideId}">${escapeHtml(side.title)}</option>`).join("")
+            : '<option value="">Все стороны конфликта уже добавлены</option>';
+        select.disabled = !availableSides.length;
+        form.querySelector('[type="submit"]').disabled = !availableSides.length;
+        form.classList.remove("d-none");
+        if (availableSides.length) select.focus();
+    } catch (error) {
+        showOperationSidesStatus(error.message, "danger");
+    }
+}
+
+async function saveOperationSide(event, operationId) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const select = document.getElementById("operationSideSelect");
+
+    try {
+        await postJson(`${API_BASE_URL}/operations/${operationId}/sides`, {
+            warSideId: Number(select.value)
+        });
+        form.classList.add("d-none");
+        showOperationSidesStatus("Сторона добавлена к операции.", "success");
+        await loadOperationSides(operationId);
+    } catch (error) {
+        showOperationSidesStatus(error.message, "danger");
+    }
+}
+
+async function deleteOperationSide(event, operationId) {
+    const button = event.target.closest("[data-operation-side-id]");
+    if (!button || !window.confirm("Удалить сторону из этой операции?")) return;
+
+    try {
+        await deleteJson(`${API_BASE_URL}/operations/${operationId}/sides/${button.dataset.operationSideId}`);
+        showOperationSidesStatus("Сторона удалена из операции.", "success");
+        await loadOperationSides(operationId);
+    } catch (error) {
+        showOperationSidesStatus(error.message, "danger");
+    }
+}
+
+function showOperationSidesStatus(message, type) {
+    const status = document.getElementById("operationSidesStatus");
+    status.className = `alert alert-${type} mt-3 mb-0`;
+    status.textContent = message;
+}
+
+function safeOperationSideColor(colorHex) {
+    return /^#[0-9a-f]{6}$/i.test(colorHex ?? "") ? colorHex : "#6c757d";
 }
 
 function renderOperation(operation) {

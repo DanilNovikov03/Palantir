@@ -3,9 +3,18 @@
     public class WarService : IWarService
     {
         private readonly IWarRepository _repository;
+        private readonly ISideRepository _sideRepository;
+        private readonly IWarSideRepository _warSideRepository;
 
-        public WarService(IWarRepository repository) =>
+        public WarService(
+            IWarRepository repository,
+            ISideRepository sideRepository,
+            IWarSideRepository warSideRepository)
+        {
             _repository = repository;
+            _sideRepository = sideRepository;
+            _warSideRepository = warSideRepository;
+        }
 
 
         public async Task<List<WarResponse>> GetAllAsync()
@@ -40,6 +49,57 @@
                     warSide.side.title,
                     warSide.color_hex))
                 .ToList();
+        }
+
+        public async Task<MapSideResponse> AddSideAsync(int warId, AddWarSideRequest request)
+        {
+            if (!await _repository.ExistsAsync(warId))
+                throw new KeyNotFoundException("Конфликт не найден.");
+
+            var side = await _sideRepository.GetByIdAsync(request.SideId);
+            if (side == null)
+                throw new KeyNotFoundException("Сторона не найдена.");
+
+            if (await _warSideRepository.GetByWarAndSideAsync(warId, request.SideId) != null)
+                throw new InvalidOperationException("Эта сторона уже добавлена к конфликту.");
+
+            var colorHex = string.IsNullOrWhiteSpace(request.ColorHex)
+                ? null
+                : request.ColorHex.Trim();
+
+            if (colorHex != null && !System.Text.RegularExpressions.Regex.IsMatch(colorHex, "^#[0-9a-fA-F]{6}$"))
+                throw new InvalidOperationException("Цвет должен быть указан в формате #RRGGBB.");
+
+            var warSide = new WarSide
+            {
+                war_id = warId,
+                side_id = side.side_id,
+                side = side,
+                color_hex = colorHex
+            };
+
+            await _warSideRepository.AddAsync(warSide);
+
+            return new MapSideResponse(
+                warSide.war_side_id,
+                side.side_id,
+                side.title,
+                warSide.color_hex);
+        }
+
+        public async Task DeleteSideAsync(int warId, int warSideId)
+        {
+            if (!await _repository.ExistsAsync(warId))
+                throw new KeyNotFoundException("Конфликт не найден.");
+
+            var warSide = await _warSideRepository.GetByIdAsync(warSideId);
+            if (warSide == null || warSide.war_id != warId)
+                throw new KeyNotFoundException("Сторона конфликта не найдена.");
+
+            if (await _warSideRepository.IsUsedByOperationsAsync(warSideId))
+                throw new InvalidOperationException("Нельзя удалить сторону конфликта, пока она используется в операциях.");
+
+            await _warSideRepository.DeleteAsync(warSideId);
         }
 
         public async Task<WarResponse> AddAsync(WarRequest warRequest)
